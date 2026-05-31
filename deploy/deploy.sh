@@ -35,11 +35,14 @@ set -euo pipefail
 cd "$APP_DIR"
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "==> Installing Node 20"
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt-get install -y nodejs
+  echo "==> Installing Node 20 from official tarball (apt mirrors unreliable on this image)"
+  NODE_VER=v20.18.1
+  curl -fsSL "https://nodejs.org/dist/${NODE_VER}/node-${NODE_VER}-linux-x64.tar.gz" -o /tmp/node.tar.gz
+  tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1
+  rm -f /tmp/node.tar.gz
 fi
-echo "==> Node $(node -v)"
+NODE_BIN="$(command -v node)"
+echo "==> Node $(node -v) at $NODE_BIN"
 
 echo "==> Installing dependencies"
 npm install --no-audit --no-fund
@@ -48,7 +51,7 @@ echo "==> Building"
 npm run build
 
 echo "==> Installing systemd service"
-sed -e "s|__APP_DIR__|$APP_DIR|g" -e "s|__PORT__|$PORT|g" \
+sed -e "s|__APP_DIR__|$APP_DIR|g" -e "s|__PORT__|$PORT|g" -e "s|__NODE__|$NODE_BIN|g" \
   deploy/multispire.service > /etc/systemd/system/multispire.service
 systemctl daemon-reload
 systemctl enable multispire >/dev/null 2>&1 || true

@@ -7,7 +7,7 @@ Type=simple
 WorkingDirectory=__APP_DIR__/server
 Environment=PORT=__PORT__
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node __APP_DIR__/server/dist/index.js
+ExecStart=__NODE__ __APP_DIR__/server/dist/index.js
 Restart=always
 RestartSec=3
 User=root
