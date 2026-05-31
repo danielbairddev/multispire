@@ -187,9 +187,16 @@ export const IRONCLAD_CARDS: CardDef[] = [
     rarity: "common",
     cost: 0,
     target: "self",
-    // Flex's temporary strength loss is not modeled yet; net effect approximated.
-    effects: [{ kind: "applyPower", power: "strength", amount: 2, to: "self" }],
-    upgrade: { effects: [{ kind: "applyPower", power: "strength", amount: 4, to: "self" }] },
+    effects: [
+      { kind: "applyPower", power: "strength", amount: 2, to: "self" },
+      { kind: "applyPower", power: "strength_down", amount: 2, to: "self" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "applyPower", power: "strength", amount: 4, to: "self" },
+        { kind: "applyPower", power: "strength_down", amount: 4, to: "self" },
+      ],
+    },
   },
 
   // ---- A couple uncommons (powers) ----

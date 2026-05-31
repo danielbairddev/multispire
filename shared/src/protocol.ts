@@ -11,6 +11,8 @@ export type ClientMessage =
   | { t: "startMatch" } // host kicks off the game from the lobby
   | { t: "playCard"; cardUid: string; targetId?: string }
   | { t: "pass" }
+  // Dismiss the end-of-turn resolution summary; the turn advances once everyone has.
+  | { t: "ackResolution" }
   | { t: "chat"; text: string };
 
 export type MatchMode = "1v1" | "ffa";
@@ -25,6 +27,23 @@ export type ServerMessage =
   // Non-fatal feedback (e.g. loadout import warnings) shown to one client.
   | { t: "notice"; message: string }
   | { t: "error"; message: string };
+
+/** One deck-buildable card, served to the client for the deckbuilder. */
+export interface CardCatalogEntry {
+  id: string;
+  name: string;
+  type: CardType;
+  cost: number | "X";
+  target: TargetKind;
+  description: string; // base form
+  upgradedDescription?: string; // present when upgradable
+  upgradable: boolean;
+}
+
+export interface RelicCatalogEntry {
+  id: string;
+  name: string;
+}
 
 export interface LobbyPlayer {
   id: string;
@@ -82,6 +101,23 @@ export interface PendingAttackView {
   times: number;
 }
 
+/** One distinct card in a player's build, with how many copies they brought. */
+export interface BuildCard {
+  id: string;
+  name: string;
+  type: CardType;
+  count: number;
+  upgraded: boolean;
+}
+
+/** The static loadout a player brought — public info, visible to everyone. */
+export interface PlayerBuild {
+  maxHp: number;
+  deckSize: number;
+  relics: { id: string; name: string }[];
+  cards: BuildCard[];
+}
+
 export interface PlayerView {
   id: string;
   name: string;
@@ -99,9 +135,48 @@ export interface PlayerView {
   exhaustCount: number;
   /** Only present for the viewing player. */
   hand?: CardView[];
+  /** Pile contents, only sent to the viewing player (for the deck viewer).
+   *  Draw pile is sorted by name so it doesn't leak draw order. */
+  drawPile?: CardView[];
+  discardPile?: CardView[];
+  exhaustPile?: CardView[];
   alive: boolean;
   /** Has this player passed during the current priority round. */
   passed: boolean;
+  /** The static build (deck/relics/HP) this player brought. Visible to all. */
+  build: PlayerBuild;
+}
+
+/** One attack as it actually landed during resolution (fully revealed). */
+export interface ResolutionAttack {
+  sourceId: string;
+  sourceName: string;
+  targetId: string;
+  targetName: string;
+  cardName: string;
+  damage: number; // per-hit damage dealt
+  times: number;
+  blocked: number; // total absorbed by block
+  hpLost: number; // total HP removed
+  lethal: boolean;
+}
+
+/** Block a player gained this turn, with the card that granted it. */
+export interface ResolutionBlock {
+  playerId: string;
+  playerName: string;
+  cardName: string;
+  amount: number; // final block gained (after Dexterity / Frail)
+}
+
+/** End-of-turn summary shown to all players before the next turn begins. */
+export interface ResolutionView {
+  turn: number;
+  blocks: ResolutionBlock[]; // block gained this turn (applied before attacks land)
+  attacks: ResolutionAttack[];
+  deaths: string[]; // names defeated this resolution
+  youAcked: boolean;
+  waitingOn: string[]; // names of players who haven't dismissed yet
 }
 
 export type Phase = "lobby" | "action" | "resolution" | "gameover";
@@ -116,6 +191,8 @@ export interface GameView {
   startingPlayerId: string | null;
   players: PlayerView[];
   pendingAttacks: PendingAttackView[];
+  /** Present while a turn's results are being shown and acknowledged. */
+  resolution?: ResolutionView | null;
   winnerId?: string | null;
   log: LogEntry[];
 }

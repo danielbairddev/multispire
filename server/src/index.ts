@@ -6,6 +6,10 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { ClientMessage, ServerMessage, MatchMode } from "@multispire/shared";
 import { MatchManager, type MemberSeed } from "./match.js";
 import { importLoadout } from "./game/import.js";
+import { buildCatalog, buildRelicCatalog } from "./game/catalog.js";
+
+const CARD_CATALOG = JSON.stringify(buildCatalog());
+const RELIC_CATALOG = JSON.stringify(buildRelicCatalog());
 
 const PORT = Number(process.env.PORT ?? 8080);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -36,6 +40,16 @@ const conns = new WeakMap<WebSocket, Conn>();
 const http = createServer(async (req, res) => {
   if (req.url === "/healthz") {
     res.writeHead(200).end("ok");
+    return;
+  }
+  if (req.url === "/api/cards") {
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" });
+    res.end(CARD_CATALOG);
+    return;
+  }
+  if (req.url === "/api/relics") {
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" });
+    res.end(RELIC_CATALOG);
     return;
   }
   // Static file serving for the built client (prod). Safe path join.
@@ -83,6 +97,9 @@ wss.on("connection", (ws) => {
     if (!c?.matchId) return;
     const match = manager.get(c.matchId);
     if (!match) return;
+    // Don't let a disconnect during the resolution summary stall everyone else.
+    const engine = match.getEngine();
+    if (engine && engine.phase === "resolution") engine.acknowledgeResolution(c.playerId);
     match.detach(c.playerId);
     match.broadcast();
     if (match.isEmpty()) manager.remove(c.matchId);
@@ -156,6 +173,14 @@ function handle(ws: WebSocket, msg: ClientMessage): void {
       if (!engine) return send(ws, { t: "error", message: "Match not running." });
       const err = engine.pass(c.playerId);
       if (err) send(ws, { t: "error", message: err });
+      match!.broadcast();
+      break;
+    }
+    case "ackResolution": {
+      const match = c.matchId ? manager.get(c.matchId) : undefined;
+      const engine = match?.getEngine();
+      if (!engine) return;
+      engine.acknowledgeResolution(c.playerId);
       match!.broadcast();
       break;
     }

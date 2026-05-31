@@ -53,6 +53,7 @@ export interface CardDef {
 /** Powers / buffs / debuffs that live on a player as stacks. */
 export type PowerId =
   | "strength"
+  | "strength_down"
   | "dexterity"
   | "vulnerable"
   | "weak"

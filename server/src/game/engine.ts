@@ -1,12 +1,17 @@
 import type {
+  BuildCard,
   CardDef,
   CardView,
   Effect,
   GameView,
   LogEntry,
   PendingAttackView,
+  PlayerBuild,
   PlayerView,
   PowerView,
+  ResolutionAttack,
+  ResolutionBlock,
+  ResolutionView,
 } from "@multispire/shared";
 import { resolveCard } from "./cards/registry.js";
 import { getRelic } from "./relics.js";
@@ -36,9 +41,19 @@ interface PendingAttack {
   uid: string;
   sourceId: string;
   targetId: string;
-  base: number; // base damage per hit before stats; -1 means "equal to source block"
+  cardName: string;
+  // Final per-hit damage, frozen the moment the card was played. Strength/Weak/
+  // Vulnerable are baked in here so debuffs only affect attacks played AFTER they
+  // land — the turn plays out in card order, not all-at-once at resolution.
+  perHit: number;
   times: number;
-  equalToBlock: boolean;
+}
+
+interface ResolutionData {
+  turn: number;
+  blocks: ResolutionBlock[];
+  attacks: ResolutionAttack[];
+  deaths: string[];
 }
 
 interface InternalPlayer {
@@ -58,6 +73,7 @@ interface InternalPlayer {
   relics: string[];
   passed: boolean;
   alive: boolean;
+  seedDeck: DeckList; // the build they brought, for the build viewer
 }
 
 export interface PlayerSeed {
@@ -78,6 +94,10 @@ export class GameEngine {
   private order: string[] = [];
   private players = new Map<string, InternalPlayer>();
   private pending: PendingAttack[] = [];
+  // Block gained this turn, in play order, for the end-of-turn summary.
+  private blockEvents: ResolutionBlock[] = [];
+  private resolutionData: ResolutionData | null = null;
+  private resolutionAcks = new Set<string>();
   private log: LogEntry[] = [];
   private logSeq = 1;
   private rng: () => number;
@@ -110,6 +130,7 @@ export class GameEngine {
       relics: seed.relics ?? [],
       passed: false,
       alive: true,
+      seedDeck: seed.deck,
     };
     // Apply relic starting effects.
     for (const id of p.relics) {
@@ -141,6 +162,7 @@ export class GameEngine {
       this.startingPlayerId = this.nextAlive(this.startingPlayerId!, true);
     }
     this.pending = [];
+    this.blockEvents = [];
     for (const id of this.order) {
       const p = this.players.get(id)!;
       if (!p.alive) continue;
@@ -154,7 +176,10 @@ export class GameEngine {
       p.energy = energy;
       // Metallicize: gain block at the top of the turn.
       const metal = p.powers.get("metallicize") ?? 0;
-      if (metal > 0) p.block += metal;
+      if (metal > 0) {
+        p.block += metal;
+        this.blockEvents.push({ playerId: p.id, playerName: p.name, cardName: "Metallicize", amount: metal });
+      }
       p.blockedThisTurn = false;
       p.passed = false;
     }
@@ -190,7 +215,9 @@ export class GameEngine {
     if (goesToExhaust) p.exhaust.push(inst);
     else p.discard.push(inst);
 
-    this.pushLog(`${p.name} plays ${def.name}${targets.length === 1 && targets[0] !== playerId ? ` → ${this.name(targets[0])}` : ""}.`);
+    const cardLabel = `${def.name}${inst.upgraded ? "+" : ""}`;
+    const targetSuffix = targets.length === 1 && targets[0] !== playerId ? ` → ${this.name(targets[0])}` : "";
+    this.pushLog(`${p.name} plays ${cardLabel}${targetSuffix} — ${describeCard(def)}`);
 
     // Execute effects: damage is deferred, everything else is immediate.
     for (const eff of def.effects) this.applyEffect(eff, p, targets, def);
@@ -253,32 +280,88 @@ export class GameEngine {
     this.phase = "resolution";
     this.pushLog(`--- Resolution (turn ${this.turn}) ---`);
 
-    // Attacks land in the order they were queued. Blocks are already applied.
+    // Blocks were all applied immediately during the turn, so they're already in
+    // place before any attack lands. Attacks land in the order they were played,
+    // each using the damage frozen at its play time.
+    const attacks: ResolutionAttack[] = [];
     for (const atk of this.pending) {
       const src = this.players.get(atk.sourceId);
       const tgt = this.players.get(atk.targetId);
       if (!src || !tgt || !tgt.alive) continue;
-      const per = atk.equalToBlock ? src.block : this.computeDamage(atk.base, src, tgt);
+      const per = atk.perHit;
+      let blocked = 0;
+      let hpLost = 0;
       for (let i = 0; i < atk.times; i++) {
         if (!tgt.alive) break;
-        this.dealDamage(tgt, per);
+        const r = this.dealDamage(tgt, per);
+        blocked += r.blocked;
+        hpLost += r.hp;
       }
-      this.pushLog(`${src.name}'s attack hits ${tgt.name} for ${per}${atk.times > 1 ? ` x${atk.times}` : ""}.`);
+      attacks.push({
+        sourceId: src.id,
+        sourceName: src.name,
+        targetId: tgt.id,
+        targetName: tgt.name,
+        cardName: atk.cardName,
+        damage: per,
+        times: atk.times,
+        blocked,
+        hpLost,
+        lethal: tgt.hp <= 0,
+      });
+      this.pushLog(
+        `${src.name}'s ${atk.cardName} hits ${tgt.name} for ${per}${atk.times > 1 ? ` x${atk.times}` : ""} ` +
+          `(${hpLost} HP lost${blocked > 0 ? `, ${blocked} blocked` : ""}).`,
+      );
     }
     this.pending = [];
 
-    // End-of-turn upkeep: clear block, tick powers, then refresh for next turn.
+    // Record who dies as a direct result of this resolution.
+    const aliveBefore = new Set(this.order.filter((id) => this.players.get(id)!.alive));
+    this.checkDeaths();
+    const deaths = this.order
+      .filter((id) => aliveBefore.has(id) && !this.players.get(id)!.alive)
+      .map((id) => this.name(id));
+
+    this.resolutionData = { turn: this.turn, blocks: this.blockEvents.slice(), attacks, deaths };
+    this.resolutionAcks.clear();
+
+    // If the match ended, keep the summary for display (no ack gate needed).
+    // Otherwise we hold in the resolution phase until every player acknowledges.
+  }
+
+  /** A player dismisses the resolution summary. Turn advances once all have. */
+  acknowledgeResolution(playerId: string): string | null {
+    if (this.phase !== "resolution") return null;
+    const p = this.players.get(playerId);
+    if (!p || !p.alive) return null;
+    this.resolutionAcks.add(playerId);
+    if (this.allAcked()) this.finishResolution();
+    return null;
+  }
+
+  /** Force the turn to advance (e.g. a player disconnected mid-summary). */
+  skipResolution(): void {
+    if (this.phase === "resolution") this.finishResolution();
+  }
+
+  private allAcked(): boolean {
+    const alive = this.order.filter((id) => this.players.get(id)!.alive);
+    return alive.length > 0 && alive.every((id) => this.resolutionAcks.has(id));
+  }
+
+  private finishResolution(): void {
+    // End-of-turn upkeep: clear block, tick powers, then start the next turn.
     for (const p of this.players.values()) {
       if (!p.alive) continue;
       p.block = 0;
       const regen = p.powers.get("regen") ?? 0;
       if (regen > 0) this.heal(p, regen);
+      this.expireTemporaryStrength(p);
       this.decayPowers(p);
     }
-
-    this.checkDeaths();
-    if ((this.phase as GameView["phase"]) === "gameover") return;
-
+    this.resolutionData = null;
+    this.resolutionAcks.clear();
     this.phase = "action";
     this.beginTurn(false);
     this.pushLog(`--- Turn ${this.turn}: ${this.name(this.startingPlayerId!)} starts ---`);
@@ -290,20 +373,34 @@ export class GameEngine {
     switch (eff.kind) {
       case "damage": {
         for (const tid of targets) {
+          const tgt = this.players.get(tid);
+          if (!tgt) continue;
+          // Freeze damage now so it reflects buffs/debuffs at THIS point in the
+          // turn — not whatever lands later.
           this.pending.push({
             uid: uid("atk"),
             sourceId: source.id,
             targetId: tid,
-            base: eff.amount,
+            cardName: def.name,
+            perHit: this.computeDamage(eff.amount, source, tgt),
             times: eff.times ?? 1,
-            equalToBlock: false,
           });
         }
         break;
       }
       case "damageEqualToBlock": {
         for (const tid of targets) {
-          this.pending.push({ uid: uid("atk"), sourceId: source.id, targetId: tid, base: 0, times: 1, equalToBlock: true });
+          const tgt = this.players.get(tid);
+          if (!tgt) continue;
+          this.pending.push({
+            uid: uid("atk"),
+            sourceId: source.id,
+            targetId: tid,
+            cardName: def.name,
+            // Snapshot the source's current block now: later cards can't change it.
+            perHit: this.computeDamage(Math.max(0, source.block), source, tgt, false),
+            times: 1,
+          });
         }
         break;
       }
@@ -311,8 +408,10 @@ export class GameEngine {
         const dex = source.powers.get("dexterity") ?? 0;
         let amt = eff.amount + dex;
         if ((source.powers.get("frail") ?? 0) > 0) amt = Math.floor(amt * FRAIL_MULT);
-        source.block += Math.max(0, amt);
+        amt = Math.max(0, amt);
+        source.block += amt;
         source.blockedThisTurn = true;
+        this.blockEvents.push({ playerId: source.id, playerName: source.name, cardName: def.name, amount: amt });
         break;
       }
       case "applyPower": {
@@ -324,7 +423,9 @@ export class GameEngine {
           r.powers.set(eff.power, (r.powers.get(eff.power) ?? 0) + eff.amount);
           // Signal status changes explicitly so every player can follow them in
           // the event log (debuffs from cards/bosses especially).
-          if (pdef.kind === "debuff") {
+          if (eff.power === "strength_down") {
+            // Bookkeeping power for temporary Strength; not worth a log line.
+          } else if (pdef.kind === "debuff") {
             this.pushLog(`☠ ${r.name} gains ${eff.amount} ${pdef.name}${rid === source.id ? "" : ` (from ${source.name})`}.`);
           } else {
             this.pushLog(`✦ ${r.name} gains ${eff.amount} ${pdef.name}.`);
@@ -364,25 +465,40 @@ export class GameEngine {
     }
   }
 
-  private computeDamage(base: number, src: InternalPlayer, tgt: InternalPlayer): number {
-    let d = base + (src.powers.get("strength") ?? 0);
+  private computeDamage(base: number, src: InternalPlayer, tgt: InternalPlayer, addStrength = true): number {
+    // Strength is excluded for block-scaling attacks (e.g. Body Slam), matching
+    // StS. Weak/Vulnerable still apply so a debuff landed earlier this turn counts.
+    let d = base + (addStrength ? src.powers.get("strength") ?? 0 : 0);
     if ((src.powers.get("weak") ?? 0) > 0) d *= WEAK_MULT;
     if ((tgt.powers.get("vulnerable") ?? 0) > 0) d *= VULNERABLE_MULT;
     return Math.max(0, Math.floor(d));
   }
 
-  private dealDamage(tgt: InternalPlayer, amount: number): void {
+  private dealDamage(tgt: InternalPlayer, amount: number): { blocked: number; hp: number } {
     let remaining = amount;
+    let blocked = 0;
     if (tgt.block > 0) {
-      const absorbed = Math.min(tgt.block, remaining);
-      tgt.block -= absorbed;
-      remaining -= absorbed;
+      blocked = Math.min(tgt.block, remaining);
+      tgt.block -= blocked;
+      remaining -= blocked;
     }
     if (remaining > 0) tgt.hp = Math.max(0, tgt.hp - remaining);
+    return { blocked, hp: remaining };
   }
 
   private heal(p: InternalPlayer, amount: number): void {
     p.hp = Math.min(p.maxHp, p.hp + amount);
+  }
+
+  // Flex-style temporary Strength: remove the tracked amount, then clear it.
+  // Strength may legitimately go negative.
+  private expireTemporaryStrength(p: InternalPlayer): void {
+    const down = p.powers.get("strength_down") ?? 0;
+    if (down <= 0) return;
+    const str = (p.powers.get("strength") ?? 0) - down;
+    if (str === 0) p.powers.delete("strength");
+    else p.powers.set("strength", str);
+    p.powers.delete("strength_down");
   }
 
   private decayPowers(p: InternalPlayer): void {
@@ -478,6 +594,7 @@ export class GameEngine {
   }
 
   private checkDeaths(): void {
+    if (this.phase === "gameover") return;
     for (const p of this.players.values()) {
       if (p.alive && p.hp <= 0) {
         p.alive = false;
@@ -516,6 +633,18 @@ export class GameEngine {
           : null,
       times: a.times,
     }));
+    let resolution: ResolutionView | null = null;
+    if (this.resolutionData) {
+      const aliveIds = this.order.filter((id) => this.players.get(id)!.alive);
+      resolution = {
+        turn: this.resolutionData.turn,
+        blocks: this.resolutionData.blocks,
+        attacks: this.resolutionData.attacks,
+        deaths: this.resolutionData.deaths,
+        youAcked: this.resolutionAcks.has(viewerId),
+        waitingOn: aliveIds.filter((id) => !this.resolutionAcks.has(id)).map((id) => this.name(id)),
+      };
+    }
     return {
       matchId: this.matchId,
       phase: this.phase,
@@ -525,15 +654,14 @@ export class GameEngine {
       startingPlayerId: this.startingPlayerId,
       players,
       pendingAttacks,
+      resolution,
       winnerId: this.winnerId,
       log: this.log.slice(-40),
     };
   }
 
   private previewDamage(a: PendingAttack): number {
-    const src = this.players.get(a.sourceId)!;
-    const tgt = this.players.get(a.targetId)!;
-    return a.equalToBlock ? src.block : this.computeDamage(a.base, src, tgt);
+    return a.perHit;
   }
 
   private playerView(id: string, viewerId: string): PlayerView {
@@ -561,12 +689,45 @@ export class GameEngine {
       exhaustCount: p.exhaust.length,
       alive: p.alive,
       passed: p.passed,
+      build: this.playerBuild(p),
     };
-    if (isSelf) view.hand = p.hand.map((c) => this.cardView(c, p));
+    if (isSelf) {
+      view.hand = p.hand.map((c) => this.cardView(c, p));
+      // Draw pile sorted by name so the viewer can't infer the shuffled order.
+      view.drawPile = p.draw
+        .map((c) => this.cardView(c, p, false))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      view.discardPile = p.discard.map((c) => this.cardView(c, p, false));
+      view.exhaustPile = p.exhaust.map((c) => this.cardView(c, p, false));
+    }
     return view;
   }
 
-  private cardView(c: CardInstance, owner: InternalPlayer): CardView {
+  /** The static loadout a player brought, grouped into distinct cards. Public. */
+  private playerBuild(p: InternalPlayer): PlayerBuild {
+    const map = new Map<string, BuildCard>();
+    for (const spec of p.seedDeck) {
+      const key = `${spec.id}|${spec.upgraded ? 1 : 0}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.count++;
+        continue;
+      }
+      const def = resolveCard(spec.id, !!spec.upgraded);
+      map.set(key, {
+        id: spec.id,
+        name: def?.name ?? spec.id,
+        type: def?.type ?? "status",
+        count: 1,
+        upgraded: !!spec.upgraded,
+      });
+    }
+    const cards = [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const relics = p.relics.map((id) => ({ id, name: getRelic(id)?.name ?? id }));
+    return { maxHp: p.maxHp, deckSize: p.seedDeck.length, relics, cards };
+  }
+
+  private cardView(c: CardInstance, owner: InternalPlayer, inHand = true): CardView {
     const def = resolveCard(c.id, c.upgraded);
     if (!def) {
       return {
@@ -583,6 +744,7 @@ export class GameEngine {
     }
     const cost = def.cost === "X" ? owner.energy : def.cost;
     const playable =
+      inHand &&
       this.phase === "action" &&
       this.priorityId === owner.id &&
       !def.unplayable &&
@@ -619,7 +781,9 @@ export function describeCard(def: CardDef): string {
         parts.push(`Gain ${e.amount} Block`);
         break;
       case "applyPower":
-        parts.push(`Apply ${e.amount} ${getPower(e.power).name}${e.to === "self" ? " to self" : ""}`);
+        if (e.power === "strength_down")
+          parts.push(`Lose ${e.amount} Strength at end of turn`);
+        else parts.push(`Apply ${e.amount} ${getPower(e.power).name}${e.to === "self" ? " to self" : ""}`);
         break;
       case "draw":
         parts.push(`Draw ${e.amount}`);

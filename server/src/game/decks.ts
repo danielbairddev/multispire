@@ -17,20 +17,25 @@ export function ironcladStarterDeck(): DeckList {
   ];
 }
 
-// A richer demo deck so matches have more to do than the bare starter.
+// The default deck everyone gets if they press Play without importing a loadout.
+// A rounded ~20-card Ironclad build: reliable damage, enough block to survive a
+// few turns, a couple of debuff/scaling options, and one power so games have an
+// arc. A few cards come pre-upgraded so quick matches feel a little spicy.
 export function ironcladDemoDeck(): DeckList {
   return [
     ...Array.from({ length: 4 }, () => ({ id: "strike_r" })),
     ...Array.from({ length: 4 }, () => ({ id: "defend_r" })),
-    { id: "bash" },
+    { id: "bash", upgraded: true },
     { id: "anger" },
     { id: "cleave" },
     { id: "twin_strike" },
     { id: "pommel_strike" },
     { id: "iron_wave" },
-    { id: "shrug_it_off" },
     { id: "clothesline" },
+    { id: "shrug_it_off", upgraded: true },
+    { id: "flex" },
     { id: "inflame" },
     { id: "body_slam" },
+    { id: "metallicize" },
   ];
 }

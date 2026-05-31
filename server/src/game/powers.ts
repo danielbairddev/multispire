@@ -4,6 +4,9 @@ import { reportMissing } from "./missing.js";
 // Powers (buffs/debuffs) the engine understands. Add new ones here.
 export const POWERS: Record<string, PowerDef> = {
   strength: { id: "strength", name: "Strength", kind: "buff" },
+  // Tracks temporary Strength (e.g. Flex). At end of turn it removes that much
+  // Strength, then clears itself. Resolved specially in finishResolution.
+  strength_down: { id: "strength_down", name: "Strength Down", kind: "debuff" },
   dexterity: { id: "dexterity", name: "Dexterity", kind: "buff" },
   metallicize: { id: "metallicize", name: "Metallicize", kind: "buff" },
   regen: { id: "regen", name: "Regen", kind: "buff", decaysPerTurn: true },

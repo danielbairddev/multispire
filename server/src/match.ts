@@ -129,6 +129,8 @@ export class Match {
     };
   }
 
+  private resolutionTimer: ReturnType<typeof setTimeout> | null = null;
+
   /** Push the right message to every connected member (per-player fog of war). */
   broadcast(): void {
     for (const m of this.members) {
@@ -137,6 +139,23 @@ export class Match {
         ? { t: "state", view: this.engine.viewFor(m.id) }
         : { t: "lobby", view: this.lobbyView() };
       m.ws.send(JSON.stringify(msg));
+    }
+    this.maintainResolutionTimeout();
+  }
+
+  // Safety net: if a connected player never dismisses the resolution summary,
+  // advance the turn anyway after a grace period so the match can't hang.
+  private maintainResolutionTimeout(): void {
+    const inResolution = this.engine?.phase === "resolution";
+    if (inResolution && !this.resolutionTimer) {
+      this.resolutionTimer = setTimeout(() => {
+        this.resolutionTimer = null;
+        this.engine?.skipResolution();
+        this.broadcast();
+      }, 60_000);
+    } else if (!inResolution && this.resolutionTimer) {
+      clearTimeout(this.resolutionTimer);
+      this.resolutionTimer = null;
     }
   }
 
