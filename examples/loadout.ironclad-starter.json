@@ -1,0 +1,11 @@
+{
+  "name": "Ironclad (starter)",
+  "character": "ironclad",
+  "maxHp": 80,
+  "relics": ["burning_blood"],
+  "deck": [
+    { "id": "strike_r", "count": 5 },
+    { "id": "defend_r", "count": 4 },
+    "bash"
+  ]
+}

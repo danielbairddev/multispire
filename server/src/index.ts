@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, extname, join, normalize } from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { ClientMessage, ServerMessage, MatchMode } from "@multispire/shared";
-import { MatchManager } from "./match.js";
+import { MatchManager, type MemberSeed } from "./match.js";
+import { importLoadout } from "./game/import.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -96,15 +97,39 @@ function handle(ws: WebSocket, msg: ClientMessage): void {
     case "join": {
       const mode: MatchMode = msg.mode ?? "1v1";
       const match = manager.joinOrCreate(msg.matchId, mode, c.playerId);
+
+      // Validate an imported loadout (if any) into an engine seed + warnings.
+      let seed: MemberSeed | undefined;
+      let warnings: string[] = [];
+      let importedName: string | undefined;
+      if (msg.loadout) {
+        const imported = importLoadout(msg.loadout);
+        warnings = imported.report.warnings;
+        importedName = imported.name;
+        seed = {
+          deck: imported.deck,
+          relics: imported.relics,
+          maxHp: imported.maxHp,
+          custom: imported.deck.length > 0,
+        };
+      }
+      const name = importedName || msg.name || "Player";
+
       // Reconnect path: same player rejoining a match they're already in.
       if (match.hasMember(c.playerId)) {
         match.attach(c.playerId, ws);
+        if (seed) match.setLoadout(c.playerId, name, seed);
       } else {
-        const err = match.addMember(c.playerId, msg.name || "Player", ws);
+        const err = match.addMember(c.playerId, name, ws, seed);
         if (err) return send(ws, { t: "error", message: err });
       }
       c.matchId = match.id;
       send(ws, { t: "joined", playerId: c.playerId, matchId: match.id });
+      if (seed) {
+        const summary = `Imported deck: ${seed.deck.length} cards, ${seed.relics.length} relics.`;
+        send(ws, { t: "notice", message: warnings.length ? `${summary} ${warnings.length} warning(s).` : summary });
+        for (const w of warnings.slice(0, 12)) send(ws, { t: "notice", message: "⚠ " + w });
+      }
       match.broadcast();
       break;
     }

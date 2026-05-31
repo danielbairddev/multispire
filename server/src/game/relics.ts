@@ -18,6 +18,10 @@ export const RELICS: Record<string, RelicHooks> = {
   burning_blood: { id: "burning_blood", name: "Burning Blood" },
 };
 
+export function hasRelic(id: string): boolean {
+  return id in RELICS;
+}
+
 export function getRelic(id: string): RelicHooks | null {
   const r = RELICS[id];
   if (!r) {

@@ -21,7 +21,7 @@ import type { DeckList } from "./decks.js";
 
 const HAND_SIZE = 5;
 const BASE_ENERGY = 3;
-const DEFAULT_MAX_HP = 75;
+export const DEFAULT_MAX_HP = 75;
 
 let uidCounter = 1;
 const uid = (prefix: string) => `${prefix}_${(uidCounter++).toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;

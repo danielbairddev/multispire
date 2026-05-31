@@ -1,13 +1,25 @@
 import type { WebSocket } from "ws";
 import type { LobbyView, MatchMode, ServerMessage } from "@multispire/shared";
-import { GameEngine } from "./game/engine.js";
-import { ironcladDemoDeck } from "./game/decks.js";
+import { DEFAULT_MAX_HP, GameEngine } from "./game/engine.js";
+import { ironcladDemoDeck, type DeckList } from "./game/decks.js";
+
+export interface MemberSeed {
+  deck: DeckList;
+  relics: string[];
+  maxHp?: number;
+  custom: boolean; // false => default deck (no loadout imported)
+}
 
 interface Member {
   id: string;
   name: string;
   ready: boolean;
   ws: WebSocket | null; // null = temporarily disconnected
+  seed: MemberSeed;
+}
+
+function defaultSeed(): MemberSeed {
+  return { deck: ironcladDemoDeck(), relics: [], custom: false };
 }
 
 const MAX_PLAYERS: Record<MatchMode, number> = { "1v1": 2, ffa: 4 };
@@ -38,12 +50,20 @@ export class Match {
     return this.members.some((m) => m.id === id);
   }
 
-  addMember(id: string, name: string, ws: WebSocket): string | null {
+  addMember(id: string, name: string, ws: WebSocket, seed?: MemberSeed): string | null {
     if (this.started) return "Match already started.";
     if (this.isFull()) return "Match is full.";
-    this.members.push({ id, name, ready: false, ws });
+    this.members.push({ id, name, ready: false, ws, seed: seed ?? defaultSeed() });
     if (!this.members.some((m) => m.id === this.hostId)) this.hostId = id;
     return null;
+  }
+
+  /** Replace a member's loadout (e.g. re-import before the match starts). */
+  setLoadout(id: string, name: string, seed: MemberSeed): void {
+    const m = this.members.find((x) => x.id === id);
+    if (!m || this.started) return;
+    if (name) m.name = name;
+    m.seed = seed;
   }
 
   attach(id: string, ws: WebSocket): void {
@@ -73,7 +93,13 @@ export class Match {
     if (this.members.length < 2) return "Need at least 2 players.";
     const engine = new GameEngine(this.id);
     for (const m of this.members) {
-      engine.addPlayer({ id: m.id, name: m.name, deck: ironcladDemoDeck() });
+      engine.addPlayer({
+        id: m.id,
+        name: m.name,
+        deck: m.seed.deck,
+        relics: m.seed.relics,
+        maxHp: m.seed.maxHp,
+      });
     }
     engine.start();
     this.engine = engine;
@@ -90,7 +116,15 @@ export class Match {
       matchId: this.id,
       mode: this.mode,
       hostId: this.hostId,
-      players: this.members.map((m) => ({ id: m.id, name: m.name, ready: m.ready })),
+      players: this.members.map((m) => ({
+        id: m.id,
+        name: m.name,
+        ready: m.ready,
+        deckSize: m.seed.deck.length,
+        relicCount: m.seed.relics.length,
+        maxHp: m.seed.maxHp ?? DEFAULT_MAX_HP,
+        custom: m.seed.custom,
+      })),
       started: this.started,
     };
   }

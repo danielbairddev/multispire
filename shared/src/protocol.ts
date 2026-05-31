@@ -2,11 +2,12 @@
 // send intents and render the per-player view the server pushes back.
 
 import type { CardType, PowerId, TargetKind } from "./cards.js";
+import type { Loadout } from "./loadout.js";
 
 // ---------- Client -> Server ----------
 
 export type ClientMessage =
-  | { t: "join"; name: string; matchId?: string; mode?: MatchMode }
+  | { t: "join"; name: string; matchId?: string; mode?: MatchMode; loadout?: Loadout }
   | { t: "startMatch" } // host kicks off the game from the lobby
   | { t: "playCard"; cardUid: string; targetId?: string }
   | { t: "pass" }
@@ -21,13 +22,26 @@ export type ServerMessage =
   | { t: "lobby"; view: LobbyView }
   | { t: "state"; view: GameView }
   | { t: "log"; entries: LogEntry[] }
+  // Non-fatal feedback (e.g. loadout import warnings) shown to one client.
+  | { t: "notice"; message: string }
   | { t: "error"; message: string };
+
+export interface LobbyPlayer {
+  id: string;
+  name: string;
+  ready: boolean;
+  /** Summary of the imported loadout so everyone can see what's loaded. */
+  deckSize: number;
+  relicCount: number;
+  maxHp: number;
+  custom: boolean; // true if a loadout was imported (vs the default deck)
+}
 
 export interface LobbyView {
   matchId: string;
   mode: MatchMode;
   hostId: string;
-  players: { id: string; name: string; ready: boolean }[];
+  players: LobbyPlayer[];
   started: boolean;
 }
 

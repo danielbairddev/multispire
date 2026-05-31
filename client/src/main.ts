@@ -1,11 +1,13 @@
 import type {
   GameView,
+  Loadout,
   LobbyView,
   MatchMode,
   PlayerView,
   ServerMessage,
 } from "@multispire/shared";
 import { Net } from "./net.js";
+import { EXAMPLE_LOADOUT } from "./example-loadout.js";
 
 const net = new Net();
 const app = document.getElementById("app")!;
@@ -17,8 +19,11 @@ interface UIState {
   lobby: LobbyView | null;
   game: GameView | null;
   error: string | null;
+  notices: string[];
   // When an enemy-target card is selected and there are multiple foes.
   targetingCardUid: string | null;
+  // Loadout JSON the user pasted/loaded on the join screen (kept across renders).
+  loadoutText: string;
 }
 
 const ui: UIState = {
@@ -28,7 +33,9 @@ const ui: UIState = {
   lobby: null,
   game: null,
   error: null,
+  notices: [],
   targetingCardUid: null,
+  loadoutText: "",
 };
 
 net.connect();
@@ -56,14 +63,22 @@ function onMessage(msg: ServerMessage): void {
         render();
       }, 2500);
       break;
+    case "notice":
+      ui.notices.push(msg.message);
+      if (ui.notices.length > 8) ui.notices = ui.notices.slice(-8);
+      setTimeout(() => {
+        ui.notices.shift();
+        render();
+      }, 6000);
+      break;
   }
   render();
 }
 
 // ----------------------------------------------------------------- actions
 
-function join(name: string, matchId: string | undefined, mode: MatchMode): void {
-  net.send({ t: "join", name, matchId, mode });
+function join(name: string, matchId: string | undefined, mode: MatchMode, loadout?: Loadout): void {
+  net.send({ t: "join", name, matchId, mode, loadout });
 }
 
 function startMatch(): void {
@@ -110,7 +125,10 @@ function el(html: string): HTMLElement {
 
 function render(): void {
   app.innerHTML = "";
-  if (ui.error) app.appendChild(el(`<div class="toast">${escape(ui.error)}</div>`));
+  const toasts = el(`<div class="toasts"></div>`);
+  if (ui.error) toasts.appendChild(el(`<div class="toast error">${escape(ui.error)}</div>`));
+  for (const n of ui.notices) toasts.appendChild(el(`<div class="toast notice">${escape(n)}</div>`));
+  app.appendChild(toasts);
   if (ui.screen === "join") return renderJoin();
   if (ui.screen === "lobby") return renderLobby();
   if (ui.screen === "game") return renderGame();
@@ -130,14 +148,59 @@ function renderJoin(): void {
             <option value="ffa">Free for all</option>
           </select>
         </label>
+
+        <details class="import" ${ui.loadoutText ? "open" : ""}>
+          <summary>Import deck / loadout (optional)</summary>
+          <p class="muted small">Paste loadout JSON, or load a file. Leave blank to use the default Ironclad deck.</p>
+          <div class="import-actions">
+            <button id="example" type="button">Load example</button>
+            <label class="filebtn">Load file…<input id="file" type="file" accept="application/json,.json" hidden /></label>
+            <button id="clearLoad" type="button">Clear</button>
+          </div>
+          <textarea id="loadout" rows="8" placeholder='{ "name": "Ironclad", "maxHp": 80, "relics": ["burning_blood"], "deck": [ { "id": "strike_r", "count": 5 }, "bash" ] }'>${escape(ui.loadoutText)}</textarea>
+          <div id="loaderr" class="loaderr"></div>
+        </details>
+
         <button id="go" class="primary">Join / Create</button>
       </div>
     </div>`);
+
+  const ta = wrap.querySelector("#loadout") as HTMLTextAreaElement;
+  ta.addEventListener("input", () => (ui.loadoutText = ta.value));
+
+  wrap.querySelector("#example")!.addEventListener("click", () => {
+    ui.loadoutText = JSON.stringify(EXAMPLE_LOADOUT, null, 2);
+    render();
+  });
+  wrap.querySelector("#clearLoad")!.addEventListener("click", () => {
+    ui.loadoutText = "";
+    render();
+  });
+  wrap.querySelector("#file")!.addEventListener("change", (ev) => {
+    const file = (ev.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    file.text().then((text) => {
+      ui.loadoutText = text;
+      render();
+    });
+  });
+
   wrap.querySelector("#go")!.addEventListener("click", () => {
     const name = (wrap.querySelector("#name") as HTMLInputElement).value.trim() || "Player";
     const match = (wrap.querySelector("#match") as HTMLInputElement).value.trim().toUpperCase();
     const mode = (wrap.querySelector("#mode") as HTMLSelectElement).value as MatchMode;
-    join(name, match || undefined, mode);
+    const errBox = wrap.querySelector("#loaderr") as HTMLElement;
+    errBox.textContent = "";
+    let loadout: Loadout | undefined;
+    if (ui.loadoutText.trim()) {
+      try {
+        loadout = JSON.parse(ui.loadoutText);
+      } catch (e) {
+        errBox.textContent = "Invalid JSON: " + (e as Error).message;
+        return;
+      }
+    }
+    join(name, match || undefined, mode, loadout);
   });
   app.appendChild(wrap);
 }
@@ -154,9 +217,10 @@ function renderLobby(): void {
         ${lobby.players
           .map(
             (p) =>
-              `<li>${escape(p.name)}${p.id === lobby.hostId ? " 👑" : ""}${
-                p.id === ui.playerId ? " (you)" : ""
-              }</li>`,
+              `<li>
+                <span>${escape(p.name)}${p.id === lobby.hostId ? " 👑" : ""}${p.id === ui.playerId ? " (you)" : ""}</span>
+                <span class="deckinfo">${p.custom ? "🃏 custom" : "default"} · ${p.deckSize} cards · ${p.relicCount} relics · ${p.maxHp} HP</span>
+              </li>`,
           )
           .join("")}
       </ul>
