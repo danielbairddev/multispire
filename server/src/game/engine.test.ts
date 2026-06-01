@@ -562,4 +562,141 @@ const forgeOf = (g: GameEngine, id: string) =>
   assert(me.block === 15, "Decisions replays Defend 3 times for 15 block");
 }
 
+const blockOf = (g: GameEngine, id: string) =>
+  g.viewFor(id).players.find((p) => p.id === id)!.block;
+
+// --- Regent: Summon Forth forges and pulls the Sovereign Blade into hand ---
+{
+  const g = regentSolo([
+    { id: "summon_forth" },
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  assert(play(g, "a", "summon_forth") === null, "Summon Forth plays");
+  assert(forgeOf(g, "a") === 8, "Summon Forth forges 8");
+  assert(handOf(g, "a").some((c) => c.id === "sovereign_blade"), "Sovereign Blade is in hand");
+}
+
+// --- Regent: Particle Wall returns itself to hand ---
+{
+  const g = regentSolo([
+    { id: "particle_wall" }, // starCost 2, gain 9 block, return to hand
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  const uidBefore = handOf(g, "a").find((c) => c.id === "particle_wall")!.uid;
+  assert(play(g, "a", "particle_wall") === null, "Particle Wall plays");
+  assert(blockOf(g, "a") === 9, "Particle Wall grants 9 Block");
+  assert(handOf(g, "a").some((c) => c.id === "particle_wall"), "Particle Wall returned to hand");
+  assert(handOf(g, "a").find((c) => c.id === "particle_wall")!.uid === uidBefore, "same card instance returned");
+}
+
+// --- Regent: Knockout Blow grants Stars when it kills ---
+{
+  // A low-HP opponent so the 30-damage blow is lethal.
+  const g = new GameEngine("ko", seededRng(7));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [
+      { id: "knockout_blow" },
+      { id: "strike_reg" },
+      { id: "defend_reg" },
+      { id: "venerate" },
+      { id: "cloak_of_stars" },
+    ],
+    relics: ["divine_right"],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 12 });
+  g.start();
+  const stars0 = g.viewFor("a").players.find((p) => p.id === "a")!.stars ?? 0;
+  assert(play(g, "a", "knockout_blow", "b") === null, "Knockout Blow plays");
+  finishTurn(g);
+  const after = g.viewFor("a").players.find((p) => p.id === "a")!.stars ?? 0;
+  assert(after === stars0 + 5, "Knockout Blow grants 5 Stars on a lethal hit");
+}
+
+// --- Regent: Genesis grants Stars at the start of each turn ---
+{
+  const g = regentSolo([
+    { id: "genesis" }, // power: start of turn gain 2 Stars
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  assert(play(g, "a", "genesis") === null, "Genesis plays");
+  const stars0 = starsOf(g, "a");
+  finishTurn(g);
+  assert(starsOf(g, "a") === stars0 + 2, "Genesis grants 2 Stars at the start of next turn");
+}
+
+// --- Regent: Terraforming Vigor boosts the next Attack, then is consumed ---
+{
+  const g = regentSolo([
+    { id: "terraforming" }, // gain 6 Vigor
+    { id: "strike_reg" }, // 6 base + 6 Vigor = 12
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  assert(play(g, "a", "terraforming") === null, "Terraforming plays");
+  assert(powerOf(g, "a", "vigor") === 6, "Terraforming grants 6 Vigor");
+  const before = hpOf(g, "b");
+  assert(play(g, "a", "strike_reg", "b") === null, "Strike plays");
+  assert(powerOf(g, "a", "vigor") === 0, "Vigor consumed by the Attack");
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 12, "Vigor adds +6 to the 6-damage Strike (12)");
+}
+
+// --- Regent relic: Fencing Manual forges 10 at combat start ---
+{
+  const g = new GameEngine("fm", seededRng(7));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [
+      { id: "strike_reg" },
+      { id: "defend_reg" },
+      { id: "venerate" },
+      { id: "cloak_of_stars" },
+      { id: "celestial_might" },
+    ],
+    relics: ["divine_right", "fencing_manual"],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  assert(forgeOf(g, "a") === 10, "Fencing Manual forges 10 at the start of combat");
+  assert(handOf(g, "a").some((c) => c.id === "sovereign_blade"), "Sovereign Blade granted by the opening Forge");
+}
+
+// --- Regent relic: Lunar Pastry grants a Star at end of turn ---
+{
+  const g = new GameEngine("lp", seededRng(7));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [
+      { id: "strike_reg" },
+      { id: "defend_reg" },
+      { id: "venerate" },
+      { id: "cloak_of_stars" },
+      { id: "celestial_might" },
+    ],
+    relics: ["divine_right", "lunar_pastry"],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  const stars0 = g.viewFor("a").players.find((p) => p.id === "a")!.stars ?? 0;
+  finishTurn(g);
+  assert((g.viewFor("a").players.find((p) => p.id === "a")!.stars ?? 0) >= stars0 + 1, "Lunar Pastry adds a Star at end of turn");
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

@@ -35,6 +35,18 @@ export interface RelicHooks {
   bonusMaxHp?: number;
   /** Star Energy granted at the start of combat (Regent's Divine Right). */
   startingStars?: number;
+  /** Forge accumulated at the start of combat (Fencing Manual). */
+  startingForge?: number;
+  /** Random Colorless cards added to hand at the start of combat (Orange Dough). */
+  startingRandomColorless?: number;
+  /** Block gained whenever the owner creates a card (Regalite). */
+  blockPerCardCreated?: number;
+  /** Star Energy gained at the end of each of the owner's turns (Lunar Pastry). */
+  starsEndOfTurn?: number;
+  /** Strength gained the first time the owner spends Star Energy each turn (Mini Regent). */
+  strengthOnFirstStarSpend?: number;
+  /** Block gained for every `perStarsSpent` Star Energy spent this combat (Galactic Dust). */
+  blockPerStarsSpent?: { perStarsSpent: number; block: number };
 }
 
 export const RELICS: Record<string, RelicHooks> = {
@@ -49,6 +61,55 @@ export const RELICS: Record<string, RelicHooks> = {
     name: "Divine Right",
     description: "Regent starter. Start each combat with 3 Star Energy.",
     startingStars: 3,
+  },
+  divine_destiny: {
+    id: "divine_destiny",
+    name: "Divine Destiny",
+    description: "Regent starter. Start each combat with 6 Star Energy.",
+    startingStars: 6,
+  },
+
+  // ---- Regent relics ----
+  fencing_manual: {
+    id: "fencing_manual",
+    name: "Fencing Manual",
+    description: "At the start of each combat, Forge 10.",
+    startingForge: 10,
+  },
+  galactic_dust: {
+    id: "galactic_dust",
+    name: "Galactic Dust",
+    description: "For every 10 Star Energy spent, gain 10 Block.",
+    blockPerStarsSpent: { perStarsSpent: 10, block: 10 },
+  },
+  regalite: {
+    id: "regalite",
+    name: "Regalite",
+    description: "Whenever you create a card, gain 2 Block.",
+    blockPerCardCreated: 2,
+  },
+  lunar_pastry: {
+    id: "lunar_pastry",
+    name: "Lunar Pastry",
+    description: "At the end of your turn, gain 1 Star Energy.",
+    starsEndOfTurn: 1,
+  },
+  mini_regent: {
+    id: "mini_regent",
+    name: "Mini Regent",
+    description: "The first time you spend Star Energy each turn, gain 1 Strength.",
+    strengthOnFirstStarSpend: 1,
+  },
+  orange_dough: {
+    id: "orange_dough",
+    name: "Orange Dough",
+    description: "At the start of each combat, add 2 random Colorless cards into your hand.",
+    startingRandomColorless: 2,
+  },
+  vitruvian_minion: {
+    id: "vitruvian_minion",
+    name: "Vitruvian Minion",
+    description: "Minion cards deal double damage and gain double Block. (Not yet modeled.)",
   },
 
   // ---- Block on combat start ----
@@ -175,6 +236,16 @@ const RELIC_ALIASES: Record<string, string> = {
   redmask: "red_mask",
   bagofpreparation: "bag_of_preparation",
   leeswaffle: "lees_waffle",
+  // ---- Regent ----
+  divineright: "divine_right",
+  divinedestiny: "divine_destiny",
+  fencingmanual: "fencing_manual",
+  galacticdust: "galactic_dust",
+  regalite: "regalite",
+  lunarpastry: "lunar_pastry",
+  miniregent: "mini_regent",
+  orangedough: "orange_dough",
+  vitruvianminion: "vitruvian_minion",
 };
 
 export function canonicalRelicId(raw: string): string {

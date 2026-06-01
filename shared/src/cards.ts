@@ -37,6 +37,15 @@ export type Effect =
       perStrike?: number;
       rampage?: number;
       perStarCard?: number;
+      // `perSkillThisTurn` adds damage for each Skill already played this turn
+      //   (e.g. Lunar Blast). `perStarGainedThisTurn` adds damage for each Star
+      //   Energy gained this turn (e.g. Radiate). `perCardCreatedThisCombat` adds
+      //   damage for each card created this combat (e.g. Supermassive).
+      //   `starsOnKill` grants that many Stars if the attack is lethal (Knockout Blow).
+      perSkillThisTurn?: number;
+      perStarGainedThisTurn?: number;
+      perCardCreatedThisCombat?: number;
+      starsOnKill?: number;
     }
   | { kind: "block"; amount: number }
   | { kind: "applyPower"; power: PowerId; amount: number; to: "enemy" | "self" }
@@ -99,7 +108,12 @@ export type Effect =
   | { kind: "fillHandWith"; cardId: string }
   // Grant resources at the start of your NEXT turn, and optionally retain your
   // hand at the end of THIS turn (e.g. Convergence).
-  | { kind: "nextTurnBonus"; energy?: number; stars?: number; retainHand?: boolean }
+  | { kind: "nextTurnBonus"; energy?: number; stars?: number; block?: number; draw?: number; retainHand?: boolean }
+  // Return the just-played card to your hand (Particle Wall) or to the top of your
+  // draw pile (Shining Strike) instead of discarding it.
+  | { kind: "returnThisCard"; to: "hand" | "draw" }
+  // Put the Sovereign Blade into your hand from anywhere (e.g. Summon Forth).
+  | { kind: "summonBlade" }
   // Interactive: choose a Skill in hand and play its effects `times` times
   // (e.g. Decisions, Decisions). The engine pauses for the pick.
   | { kind: "replayChosenSkill"; times: number }
@@ -196,6 +210,26 @@ export type PowerId =
   | "arsenal"
   // Forge N at the start of each turn (Furnace / Hammer Time).
   | "auto_forge"
+  // Gain N Stars at the start of each turn (Genesis).
+  | "genesis"
+  // Add N random Colorless cards to hand at the start of each turn (Spectrum Shift).
+  | "spectrum_shift"
+  // At the start of each turn, draw 1 and Exhaust 1 random card from hand (Tyranny).
+  | "tyranny"
+  // Whenever you play a card, gain N Stars (The Sealed Throne).
+  | "sealed_throne"
+  // Gain N Block whenever you create a card (Pillar of Creation).
+  | "pillar_of_creation"
+  // Gain N Block whenever you play the Sovereign Blade (Parry).
+  | "parry"
+  // Whenever you attack an enemy, it loses 1 Strength this turn (Monarch's Gaze).
+  | "monarchs_gaze"
+  // The Sovereign Blade hits all enemies (Seeking Edge).
+  | "seeking_edge"
+  // The Sovereign Blade hits N additional times (Sword Sage).
+  | "sword_sage"
+  // If you play 5+ cards in a turn, draw N at the start of your next turn (Pale Blue Dot).
+  | "pale_blue_dot"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

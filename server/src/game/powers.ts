@@ -46,6 +46,37 @@ export const POWERS: Record<string, PowerDef> = {
   brutality: { id: "brutality", name: "Brutality", kind: "buff" },
   // Rupture: gain this much Strength whenever you lose HP from a card.
   rupture: { id: "rupture", name: "Rupture", kind: "buff" },
+  // --- Regent powers ---
+  // Vigor: your next Attack deals this much extra damage, then it's consumed.
+  vigor: { id: "vigor", name: "Vigor", kind: "buff" },
+  // Child of the Stars: gain N Block for each Star Energy spent.
+  child_of_the_stars: { id: "child_of_the_stars", name: "Child of the Stars", kind: "buff" },
+  // Black Hole: deal N damage to all enemies whenever you spend or gain Star Energy.
+  black_hole: { id: "black_hole", name: "Black Hole", kind: "buff" },
+  // Arsenal: gain N Strength whenever you create a card.
+  arsenal: { id: "arsenal", name: "Arsenal", kind: "buff" },
+  // Furnace / Hammer Time: Forge N at the start of each turn.
+  auto_forge: { id: "auto_forge", name: "Auto-Forge", kind: "buff" },
+  // Genesis: gain N Star Energy at the start of each turn.
+  genesis: { id: "genesis", name: "Genesis", kind: "buff" },
+  // Spectrum Shift: add N random Colorless cards to hand at the start of each turn.
+  spectrum_shift: { id: "spectrum_shift", name: "Spectrum Shift", kind: "buff" },
+  // Tyranny: at the start of each turn, draw 1 and Exhaust 1 random card from hand.
+  tyranny: { id: "tyranny", name: "Tyranny", kind: "buff" },
+  // The Sealed Throne: gain N Star Energy whenever you play a card.
+  sealed_throne: { id: "sealed_throne", name: "The Sealed Throne", kind: "buff" },
+  // Pillar of Creation: gain N Block whenever you create a card.
+  pillar_of_creation: { id: "pillar_of_creation", name: "Pillar of Creation", kind: "buff" },
+  // Parry: gain N Block whenever you play the Sovereign Blade.
+  parry: { id: "parry", name: "Parry", kind: "buff" },
+  // Monarch's Gaze: whenever you attack an enemy, it loses 1 Strength this turn.
+  monarchs_gaze: { id: "monarchs_gaze", name: "Monarch's Gaze", kind: "buff" },
+  // Seeking Edge: the Sovereign Blade hits all enemies.
+  seeking_edge: { id: "seeking_edge", name: "Seeking Edge", kind: "buff" },
+  // Sword Sage: the Sovereign Blade hits N additional times.
+  sword_sage: { id: "sword_sage", name: "Sword Sage", kind: "buff" },
+  // Pale Blue Dot: if you play 5+ cards in a turn, draw N at the start of your next turn.
+  pale_blue_dot: { id: "pale_blue_dot", name: "Pale Blue Dot", kind: "buff" },
 };
 
 export function getPower(id: PowerId): PowerDef {

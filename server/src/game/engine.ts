@@ -66,6 +66,8 @@ interface PendingAttack {
   lifesteal?: boolean;
   // Feed: permanently raise the source's max HP if this attack is lethal.
   maxHpOnKill?: number;
+  // Knockout Blow: gain this many Stars if this attack is lethal.
+  starsOnKill?: number;
 }
 
 interface ResolutionData {
@@ -105,9 +107,23 @@ interface InternalPlayer {
   usesStars: boolean;
   // Attacks played this turn (Beat into Shape Forges per other attack).
   attacksThisTurn: number;
-  // Resources queued by Convergence for the start of the next turn.
+  // Skills played this turn (Lunar Blast scales off it).
+  skillsThisTurn: number;
+  // Total cards played this turn (Pale Blue Dot's 5+ check).
+  cardsPlayedThisTurn: number;
+  // Star Energy gained this turn (Radiate scales off it).
+  starsGainedThisTurn: number;
+  // Cards created this combat (Supermassive scales off it).
+  cardsCreatedThisCombat: number;
+  // Total Star Energy spent this combat (Galactic Dust awards Block per threshold).
+  starsSpentThisCombat: number;
+  // Whether the owner has already spent Star Energy this turn (Mini Regent).
+  spentStarsThisTurn: boolean;
+  // Resources queued for the start of the next turn (Convergence, Glow, Refine Blade…).
   nextTurnEnergy: number;
   nextTurnStars: number;
+  nextTurnBlock: number;
+  nextTurnDraw: number;
   // One-shot: keep the whole hand at the next end-of-turn cleanup (Convergence).
   retainHandOnce: boolean;
   seedDeck: DeckList; // the build they brought, for the build viewer
@@ -203,8 +219,16 @@ export class GameEngine {
       forge: 0,
       usesStars: seed.deck.some((spec) => resolveCard(spec.id, false)?.character === "regent"),
       attacksThisTurn: 0,
+      skillsThisTurn: 0,
+      cardsPlayedThisTurn: 0,
+      starsGainedThisTurn: 0,
+      cardsCreatedThisCombat: 0,
+      starsSpentThisCombat: 0,
+      spentStarsThisTurn: false,
       nextTurnEnergy: 0,
       nextTurnStars: 0,
+      nextTurnBlock: 0,
+      nextTurnDraw: 0,
       retainHandOnce: false,
       seedDeck: seed.deck,
     };
@@ -279,6 +303,9 @@ export class GameEngine {
       // Furnace / Hammer Time: Forge at the start of each turn.
       const autoForge = p.powers.get("auto_forge") ?? 0;
       if (autoForge > 0) this.forge(p, autoForge);
+      // Genesis: gain Star Energy at the start of each turn.
+      const genesis = p.powers.get("genesis") ?? 0;
+      if (genesis > 0) this.gainStars(p, genesis);
       // Clean up the leftover hand: Convergence retains everything once; otherwise
       // Retain keeps the card, Ethereal exhausts it, everything else discards.
       const leftover = p.hand;
@@ -291,16 +318,41 @@ export class GameEngine {
         else if (cdef?.ethereal) this.exhaustCard(p, c);
         else p.discard.push(c);
       }
-      // New turn: reset per-turn counters and pay out any queued (Convergence)
-      // resources before drawing.
+      // New turn: reset per-turn counters and pay out any queued (Convergence,
+      // Glow, Refine Blade, Hidden Cache…) resources before drawing.
       p.attacksThisTurn = 0;
+      p.skillsThisTurn = 0;
+      p.cardsPlayedThisTurn = 0;
+      p.starsGainedThisTurn = 0;
+      p.spentStarsThisTurn = false;
       if (p.nextTurnStars > 0) {
         this.gainStars(p, p.nextTurnStars);
         p.nextTurnStars = 0;
       }
+      if (p.nextTurnBlock > 0) {
+        this.gainBlock(p, p.nextTurnBlock, "Next-turn Block");
+        p.nextTurnBlock = 0;
+      }
+      // Spectrum Shift: add random Colorless cards to hand at the start of the turn.
+      const spectrum = p.powers.get("spectrum_shift") ?? 0;
+      if (spectrum > 0) this.addRandomCardsToPile(p, "neutral", spectrum, "hand");
       // Bombardment and friends auto-play from the Exhaust pile each turn.
       this.autoPlayFromExhaust(p);
       this.drawCards(p, HAND_SIZE);
+      // Queued (Glow / Pale Blue Dot) extra draw, and Tyranny's draw-then-exhaust.
+      if (p.nextTurnDraw > 0) {
+        this.drawCards(p, p.nextTurnDraw);
+        p.nextTurnDraw = 0;
+      }
+      const tyranny = p.powers.get("tyranny") ?? 0;
+      for (let i = 0; i < tyranny; i++) {
+        this.drawCards(p, 1);
+        if (p.hand.length > 0) {
+          const idx = Math.floor(this.rng() * p.hand.length);
+          const [c] = p.hand.splice(idx, 1);
+          this.exhaustCard(p, c);
+        }
+      }
       // Refresh energy (+ relic bonuses + queued Convergence energy), and apply
       // first-turn extra draw.
       let energy = p.maxEnergy + p.nextTurnEnergy;
@@ -314,6 +366,11 @@ export class GameEngine {
         if (first) {
           energy += r?.bonusEnergyFirstTurn ?? 0;
           extraDraw += r?.bonusDrawFirstTurn ?? 0;
+          // Combat-start Regent relics (applied on the first turn so their cards
+          // land in the opening hand and survive the cleanup): Fencing Manual
+          // Forges, Orange Dough adds random Colorless cards.
+          if (r?.startingForge) this.forge(p, r.startingForge);
+          if (r?.startingRandomColorless) this.addRandomCardsToPile(p, "neutral", r.startingRandomColorless, "hand");
         }
       }
       if (extraDraw > 0) this.drawCards(p, extraDraw);
@@ -389,8 +446,18 @@ export class GameEngine {
     }
     // Spend Star Energy after the card leaves hand (fires Star-reactive powers).
     if (starCost > 0) this.spendStars(p, starCost);
-    // Count attacks this turn (Beat into Shape Forges per other attack played).
+    // Per-turn play counters (Beat into Shape, Lunar Blast, Pale Blue Dot).
     if (def.type === "attack") p.attacksThisTurn += 1;
+    if (def.type === "skill") p.skillsThisTurn += 1;
+    p.cardsPlayedThisTurn += 1;
+    // The Sealed Throne: gain Star Energy whenever you play a card.
+    const throne = p.powers.get("sealed_throne") ?? 0;
+    if (throne > 0) this.gainStars(p, throne);
+    // Parry: gain Block whenever you play the Sovereign Blade.
+    if (def.id === "sovereign_blade") {
+      const parry = p.powers.get("parry") ?? 0;
+      if (parry > 0) this.gainBlock(p, parry, "Parry");
+    }
 
     const cardLabel = `${def.name}${inst.upgraded ? "+" : ""}`;
     const targetSuffix = targets.length === 1 && targets[0] !== playerId ? ` → ${this.name(targets[0])}` : "";
@@ -532,6 +599,11 @@ export class GameEngine {
         src.hp += atk.maxHpOnKill;
         this.pushLog(`✦ ${src.name}'s max HP rises by ${atk.maxHpOnKill}.`);
       }
+      // Knockout Blow: a lethal blow grants the attacker Star Energy.
+      if (lethal && atk.starsOnKill && src.alive) {
+        this.gainStars(src, atk.starsOnKill);
+        this.pushLog(`✦ ${src.name} gains ${atk.starsOnKill} Star Energy (knockout).`);
+      }
       if (thornsDealt > 0)
         this.pushLog(`✦ ${tgt.name}'s Thorns deals ${thornsDealt} to ${src.name}.`);
       attacks.push({
@@ -556,6 +628,19 @@ export class GameEngine {
       );
     }
     this.pending = [];
+
+    // Pale Blue Dot: if you played 5+ cards this turn, draw extra next turn.
+    for (const id of this.order) {
+      const p = this.players.get(id)!;
+      if (!p.alive) continue;
+      const pbd = p.powers.get("pale_blue_dot") ?? 0;
+      if (pbd > 0 && p.cardsPlayedThisTurn >= 5) p.nextTurnDraw += pbd;
+      // Lunar Pastry: gain Star Energy at the end of each of your turns.
+      for (const rid of p.relics) {
+        const s = getRelic(rid)?.starsEndOfTurn ?? 0;
+        if (s > 0) this.gainStars(p, s);
+      }
+    }
 
     // End-of-turn Burn ticks: each Burn still in hand deals 2 unblockable damage.
     for (const id of this.order) {
@@ -808,10 +893,19 @@ export class GameEngine {
         }
         // Crescent Spear: +N damage per Star Energy card in hand.
         const starCardBonus = eff.perStarCard ? eff.perStarCard * this.countStarCards(source) : 0;
+        // Lunar Blast / Radiate / Supermassive: scale off per-turn or per-combat counters.
+        const skillBonus = eff.perSkillThisTurn ? eff.perSkillThisTurn * source.skillsThisTurn : 0;
+        const starGainBonus = eff.perStarGainedThisTurn ? eff.perStarGainedThisTurn * source.starsGainedThisTurn : 0;
+        const createdBonus = eff.perCardCreatedThisCombat
+          ? eff.perCardCreatedThisCombat * source.cardsCreatedThisCombat
+          : 0;
         // Vigor: a one-shot bonus to the next Attack, consumed when it's played.
         const vigor = source.powers.get("vigor") ?? 0;
         if (vigor > 0) source.powers.delete("vigor");
-        const base = eff.amount + strikeBonus + rampageBonus + starCardBonus + vigor;
+        const base =
+          eff.amount + strikeBonus + rampageBonus + starCardBonus + skillBonus + starGainBonus + createdBonus + vigor;
+        // Monarch's Gaze: attacking an enemy saps 1 Strength from it this turn.
+        const gaze = source.powers.get("monarchs_gaze") ?? 0;
         for (const tid of targets) {
           const tgt = this.players.get(tid);
           if (!tgt) continue;
@@ -826,7 +920,11 @@ export class GameEngine {
             times: eff.times ?? 1,
             lifesteal: eff.lifesteal,
             maxHpOnKill: eff.maxHpOnKill,
+            starsOnKill: eff.starsOnKill,
           });
+          if (gaze > 0 && tid !== source.id) {
+            tgt.powers.set("strength", (tgt.powers.get("strength") ?? 0) - 1);
+          }
         }
         break;
       }
@@ -944,7 +1042,11 @@ export class GameEngine {
         // The Sovereign Blade strikes for the caster's accumulated Forge.
         const vigor = source.powers.get("vigor") ?? 0;
         if (vigor > 0) source.powers.delete("vigor");
-        for (const tid of targets) {
+        // Seeking Edge: the Blade hits every enemy. Sword Sage: extra hits.
+        const hitsAll = (source.powers.get("seeking_edge") ?? 0) > 0;
+        const bladeTargets = hitsAll ? this.aliveEnemies(source.id) : targets;
+        const times = 1 + (source.powers.get("sword_sage") ?? 0);
+        for (const tid of bladeTargets) {
           const tgt = this.players.get(tid);
           if (!tgt) continue;
           this.pending.push({
@@ -953,7 +1055,7 @@ export class GameEngine {
             targetId: tid,
             cardName: def.name,
             perHit: this.computeDamage(source.forge + vigor, source, tgt, true),
-            times: 1,
+            times,
           });
         }
         break;
@@ -998,22 +1100,8 @@ export class GameEngine {
         break;
       }
       case "addRandomCards": {
-        // Bundle of Joy: add random Colorless cards to hand.
-        const pool = cardsForCharacter(eff.character);
-        if (pool.length === 0) break;
-        let made = 0;
-        for (let i = 0; i < eff.amount; i++) {
-          const pick = pool[Math.floor(this.rng() * pool.length)];
-          const c: CardInstance = { uid: uid("c"), id: pick.id, upgraded: false };
-          if (eff.pile === "hand") source.hand.push(c);
-          else if (eff.pile === "draw") source.draw.push(c);
-          else source.discard.push(c);
-          made++;
-        }
-        if (made > 0) {
-          this.onCardCreated(source, made);
-          this.pushLog(`✦ ${source.name} adds ${made} random card${made > 1 ? "s" : ""} to ${eff.pile}.`);
-        }
+        // Bundle of Joy / Manifest Authority / Spectrum Shift: add random Colorless cards.
+        this.addRandomCardsToPile(source, eff.character, eff.amount, eff.pile);
         break;
       }
       case "fillHandWith": {
@@ -1031,19 +1119,55 @@ export class GameEngine {
         break;
       }
       case "nextTurnBonus": {
-        // Convergence: queue resources for next turn and optionally retain hand.
+        // Convergence / Glow / Refine Blade / Hidden Cache / Hegemony / Glitterstream:
+        // queue resources for next turn and optionally retain hand.
         if (eff.energy) source.nextTurnEnergy += eff.energy;
         if (eff.stars) source.nextTurnStars += eff.stars;
+        if (eff.block) source.nextTurnBlock += eff.block;
+        if (eff.draw) source.nextTurnDraw += eff.draw;
         if (eff.retainHand) source.retainHandOnce = true;
         const bits = [
           eff.energy ? `${eff.energy} Energy` : "",
           eff.stars ? `${eff.stars} Star Energy` : "",
+          eff.block ? `${eff.block} Block` : "",
+          eff.draw ? `draw ${eff.draw}` : "",
         ].filter(Boolean);
         this.pushLog(
-          `✦ ${source.name} channels Convergence${bits.length ? ` (next turn: ${bits.join(", ")})` : ""}${
+          `✦ ${source.name} queues a bonus${bits.length ? ` (next turn: ${bits.join(", ")})` : ""}${
             eff.retainHand ? "; retains hand" : ""
           }.`,
         );
+        break;
+      }
+      case "returnThisCard": {
+        // Particle Wall returns to hand; Shining Strike to the top of the draw pile.
+        // The card has already been moved to discard/exhaust by playCard; pull it back.
+        if (instUid) {
+          const from = [source.discard, source.exhaust, source.draw];
+          for (const pile of from) {
+            const i = pile.findIndex((c) => c.uid === instUid);
+            if (i !== -1) {
+              const [c] = pile.splice(i, 1);
+              if (eff.to === "hand") source.hand.push(c);
+              else source.draw.push(c);
+              break;
+            }
+          }
+        }
+        break;
+      }
+      case "summonBlade": {
+        // Summon Forth: pull the Sovereign Blade into hand from anywhere (forging it
+        // if it doesn't exist yet).
+        this.grantSovereignBlade(source);
+        for (const pile of [source.draw, source.discard, source.exhaust]) {
+          const i = pile.findIndex((c) => c.id === "sovereign_blade");
+          if (i !== -1) {
+            const [c] = pile.splice(i, 1);
+            source.hand.push(c);
+            break;
+          }
+        }
         break;
       }
       case "exhaustRandom": {
@@ -1198,6 +1322,7 @@ export class GameEngine {
     if (amount <= 0) return;
     p.stars += amount;
     p.usesStars = true;
+    p.starsGainedThisTurn += amount;
     this.starReactive(p, amount);
   }
 
@@ -1208,6 +1333,25 @@ export class GameEngine {
     // Child of the Stars: gain Block for each Star spent.
     const child = p.powers.get("child_of_the_stars") ?? 0;
     if (child > 0) this.gainBlock(p, child * amount, "Child of the Stars");
+    // Relic reactions to spending Star Energy.
+    for (const rid of p.relics) {
+      const r = getRelic(rid);
+      if (!r) continue;
+      // Mini Regent: gain Strength the first time you spend Stars each turn.
+      if (r.strengthOnFirstStarSpend && !p.spentStarsThisTurn) {
+        p.powers.set("strength", (p.powers.get("strength") ?? 0) + r.strengthOnFirstStarSpend);
+        this.pushLog(`✦ ${p.name} gains ${r.strengthOnFirstStarSpend} Strength (${r.name}).`);
+      }
+      // Galactic Dust: gain Block for every N Stars spent this combat.
+      if (r.blockPerStarsSpent) {
+        const { perStarsSpent, block } = r.blockPerStarsSpent;
+        const before = Math.floor(p.starsSpentThisCombat / perStarsSpent);
+        const after = Math.floor((p.starsSpentThisCombat + amount) / perStarsSpent);
+        if (after > before) this.gainBlock(p, (after - before) * block, r.name);
+      }
+    }
+    p.starsSpentThisCombat += amount;
+    p.spentStarsThisTurn = true;
     this.starReactive(p, amount);
   }
 
@@ -1268,12 +1412,46 @@ export class GameEngine {
     this.pushLog(`✦ ${p.name} forges the Sovereign Blade.`);
   }
 
-  // Arsenal: gain Strength whenever you create a card.
+  // Whenever you create a card: track the count and fire create-reactive powers
+  // (Arsenal gains Strength, Pillar of Creation gains Block).
   private onCardCreated(p: InternalPlayer, count: number): void {
+    if (count <= 0) return;
+    p.cardsCreatedThisCombat += count;
     const arsenal = p.powers.get("arsenal") ?? 0;
-    if (arsenal > 0 && count > 0) {
+    if (arsenal > 0) {
       p.powers.set("strength", (p.powers.get("strength") ?? 0) + arsenal * count);
       this.pushLog(`✦ ${p.name} gains ${arsenal * count} Strength (Arsenal).`);
+    }
+    const pillar = p.powers.get("pillar_of_creation") ?? 0;
+    if (pillar > 0) this.gainBlock(p, pillar * count, "Pillar of Creation");
+    // Regalite: gain Block whenever you create a card.
+    for (const rid of p.relics) {
+      const block = getRelic(rid)?.blockPerCardCreated ?? 0;
+      if (block > 0) this.gainBlock(p, block * count, getRelic(rid)!.name);
+    }
+  }
+
+  // Add `amount` random playable cards of a character/pool to a pile (Bundle of Joy,
+  // Manifest Authority, Spectrum Shift). Fires create-reactive powers.
+  private addRandomCardsToPile(
+    p: InternalPlayer,
+    character: CardDef["character"],
+    amount: number,
+    pile: "discard" | "draw" | "hand",
+  ): void {
+    const pool = cardsForCharacter(character);
+    if (pool.length === 0 || amount <= 0) return;
+    const dest = pile === "discard" ? p.discard : pile === "draw" ? p.draw : p.hand;
+    let made = 0;
+    for (let i = 0; i < amount; i++) {
+      const pick = pool[Math.floor(this.rng() * pool.length)];
+      dest.push({ uid: uid("c"), id: pick.id, upgraded: false });
+      made++;
+    }
+    if (made > 0) {
+      this.onCardCreated(p, made);
+      const where = pile === "draw" ? "draw pile" : pile === "discard" ? "discard pile" : "hand";
+      this.pushLog(`✦ ${p.name} adds ${made} random card${made > 1 ? "s" : ""} to ${where}.`);
     }
   }
 
@@ -1673,7 +1851,14 @@ export function describeCard(def: CardDef): string {
         const life = e.lifesteal ? ", heal for unblocked damage" : "";
         const kill = e.maxHpOnKill ? `, +${e.maxHpOnKill} max HP on kill` : "";
         const ramp = e.rampage ? `, +${e.rampage} damage each time it's played this combat` : "";
-        parts.push(`Deal ${e.amount}${e.times && e.times > 1 ? ` x${e.times}` : ""} damage${mul}${per}${life}${kill}${ramp}`);
+        const star = e.perStarCard ? `, +${e.perStarCard} per Star Energy card in hand` : "";
+        const skill = e.perSkillThisTurn ? `, +${e.perSkillThisTurn} per Skill played this turn` : "";
+        const starGain = e.perStarGainedThisTurn ? `, +${e.perStarGainedThisTurn} per Star Energy gained this turn` : "";
+        const created = e.perCardCreatedThisCombat ? `, +${e.perCardCreatedThisCombat} per card created this combat` : "";
+        const koStars = e.starsOnKill ? `, gain ${e.starsOnKill} Star Energy if this kills` : "";
+        parts.push(
+          `Deal ${e.amount}${e.times && e.times > 1 ? ` x${e.times}` : ""} damage${mul}${per}${life}${kill}${ramp}${star}${skill}${starGain}${created}${koStars}`,
+        );
         break;
       }
       case "damageEqualToBlock":
@@ -1783,12 +1968,23 @@ export function describeCard(def: CardDef): string {
         break;
       }
       case "nextTurnBonus": {
-        const bits = [e.energy ? `${e.energy} Energy` : "", e.stars ? `${e.stars} Star Energy` : ""].filter(Boolean);
+        const bits = [
+          e.energy ? `${e.energy} Energy` : "",
+          e.stars ? `${e.stars} Star Energy` : "",
+          e.block ? `${e.block} Block` : "",
+          e.draw ? `draw ${e.draw}` : "",
+        ].filter(Boolean);
         const lead = bits.length ? `Next turn, gain ${bits.join(" and ")}` : "";
         const retain = e.retainHand ? `${lead ? ". " : ""}Retain your hand` : "";
         parts.push(`${lead}${retain}`);
         break;
       }
+      case "returnThisCard":
+        parts.push(`Return this card to your ${e.to === "hand" ? "hand" : "draw pile"}`);
+        break;
+      case "summonBlade":
+        parts.push("Put the Sovereign Blade into your hand");
+        break;
       case "replayChosenSkill":
         parts.push(`Choose a Skill in your hand and play it ${e.times} times`);
         break;
