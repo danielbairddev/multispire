@@ -1,5 +1,5 @@
 import type { WebSocket } from "ws";
-import type { LobbyView, MatchMode, ServerMessage } from "@multispire/shared";
+import type { LobbyView, MatchMode, OpenMatchView, ServerMessage } from "@multispire/shared";
 import { DEFAULT_MAX_HP, GameEngine } from "./game/engine.js";
 import { ironcladDemoDeck, type DeckList } from "./game/decks.js";
 
@@ -42,8 +42,21 @@ export class Match {
     return this.members.length;
   }
 
+  get maxPlayers(): number {
+    return MAX_PLAYERS[this.mode];
+  }
+
   isFull(): boolean {
     return this.members.length >= MAX_PLAYERS[this.mode];
+  }
+
+  /** True when others can still join: lobby is open and has room. */
+  isJoinable(): boolean {
+    return !this.started && this.members.length > 0 && !this.isFull();
+  }
+
+  hostName(): string {
+    return this.members.find((m) => m.id === this.hostId)?.name ?? "Host";
   }
 
   hasMember(id: string): boolean {
@@ -185,6 +198,22 @@ export class MatchManager {
 
   remove(id: string): void {
     this.matches.delete(id);
+  }
+
+  /** The open games to advertise on the homepage. */
+  openMatches(): OpenMatchView[] {
+    const out: OpenMatchView[] = [];
+    for (const m of this.matches.values()) {
+      if (!m.isJoinable()) continue;
+      out.push({
+        matchId: m.id,
+        mode: m.mode,
+        hostName: m.hostName(),
+        playerCount: m.playerCount,
+        maxPlayers: m.maxPlayers,
+      });
+    }
+    return out;
   }
 
   private newId(): string {

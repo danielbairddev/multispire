@@ -52,6 +52,12 @@ const http = createServer(async (req, res) => {
     res.end(RELIC_CATALOG);
     return;
   }
+  if (req.url === "/api/matches") {
+    // Computed fresh: the set of open games changes as players come and go.
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" });
+    res.end(JSON.stringify(manager.openMatches()));
+    return;
+  }
   // Static file serving for the built client (prod). Safe path join.
   try {
     const urlPath = (req.url ?? "/").split("?")[0];

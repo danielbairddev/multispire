@@ -5,6 +5,7 @@ import type {
   LoadoutCardEntry,
   LobbyView,
   MatchMode,
+  OpenMatchView,
   PlayerView,
   RelicCatalogEntry,
   ServerMessage,
@@ -52,6 +53,8 @@ interface UIState {
   builder: BuilderState;
   // A deck built in the deckbuilder, used as the loadout on join.
   deckDraft: Loadout | null;
+  // Open games advertised on the homepage (polled while on the join screen).
+  openMatches: OpenMatchView[];
 }
 
 function emptyBuilder(): BuilderState {
@@ -74,10 +77,28 @@ const ui: UIState = {
   relicCatalog: null,
   builder: emptyBuilder(),
   deckDraft: null,
+  openMatches: [],
 };
 
 net.connect();
 net.on(onMessage);
+
+// --- open-games list: poll the homepage feed while sitting on the join screen ---
+async function refreshOpenMatches(): Promise<void> {
+  try {
+    const res = await fetch("/api/matches");
+    const list = (await res.json()) as OpenMatchView[];
+    const changed = JSON.stringify(list) !== JSON.stringify(ui.openMatches);
+    ui.openMatches = list;
+    if (changed && ui.screen === "join") render();
+  } catch {
+    /* network hiccup — keep the last list */
+  }
+}
+void refreshOpenMatches();
+setInterval(() => {
+  if (ui.screen === "join") void refreshOpenMatches();
+}, 4000);
 
 // --- priority chime: a short synthesized tone when it becomes your turn ---
 let audioCtx: AudioContext | null = null;
@@ -269,6 +290,11 @@ function removeRelic(id: string): void {
   render();
 }
 
+function toggleRelic(id: string): void {
+  if (ui.builder.relics.includes(id)) removeRelic(id);
+  else addRelic(id);
+}
+
 function builderJson(): string {
   return JSON.stringify(builderToLoadout(), null, 2);
 }
@@ -343,6 +369,25 @@ function ackResolution(): void {
   net.send({ t: "ackResolution" });
 }
 
+// Leave the finished match and return to the main menu. Reconnects with a fresh
+// identity (the server detaches us from the old match) but keeps any deck the
+// player built so they can jump straight into another game.
+function backToMenu(): void {
+  net.reset();
+  ui.screen = "join";
+  ui.playerId = null;
+  ui.matchId = null;
+  ui.lobby = null;
+  ui.game = null;
+  ui.targetingCardUid = null;
+  ui.showDeck = false;
+  ui.buildOf = null;
+  hadPriority = false;
+  lastSeenPlaySeq = 0;
+  void refreshOpenMatches();
+  render();
+}
+
 function toggleMute(): void {
   muted = !muted;
   localStorage.setItem("ms_muted", muted ? "1" : "0");
@@ -398,6 +443,14 @@ function renderJoin(): void {
             <option value="ffa">Free for all</option>
           </select>
         </label>
+
+        <div class="opengames">
+          <div class="opengames-head">
+            <span>Open games</span>
+            <button id="refreshGames" type="button" class="ghost" title="Refresh">↻</button>
+          </div>
+          <div id="openList" class="openlist"></div>
+        </div>
 
         <div class="builder-entry">
           ${
@@ -471,7 +524,43 @@ function renderJoin(): void {
     }
     join(name, match || undefined, mode, loadout);
   });
+
+  // Open-games list with click-to-join.
+  const nameInput = wrap.querySelector("#name") as HTMLInputElement;
+  const joinOpen = (matchId: string, mode: MatchMode) => {
+    const name = nameInput.value.trim() || "Player";
+    let loadout: Loadout | undefined = ui.deckDraft ?? undefined;
+    if (!loadout && ui.loadoutText.trim()) {
+      try {
+        loadout = JSON.parse(ui.loadoutText);
+      } catch {
+        /* fall through with no loadout */
+      }
+    }
+    join(name, matchId, mode, loadout);
+  };
+  renderOpenList(wrap.querySelector("#openList") as HTMLElement, joinOpen);
+  wrap.querySelector("#refreshGames")!.addEventListener("click", () => void refreshOpenMatches());
+
   app.appendChild(wrap);
+}
+
+function renderOpenList(container: HTMLElement, joinOpen: (matchId: string, mode: MatchMode) => void): void {
+  container.innerHTML = "";
+  if (!ui.openMatches.length) {
+    container.appendChild(el(`<p class="muted small">No open games right now. Join / Create one above to host.</p>`));
+    return;
+  }
+  for (const m of ui.openMatches) {
+    const row = el(`
+      <div class="gamerow">
+        <span class="gamecode">${escape(m.matchId)}</span>
+        <span class="gamemeta">${escape(m.hostName)} · ${m.mode} · ${m.playerCount}/${m.maxPlayers}</span>
+        <button class="joingame primary" type="button">Join</button>
+      </div>`);
+    row.querySelector(".joingame")!.addEventListener("click", () => joinOpen(m.matchId, m.mode));
+    container.appendChild(row);
+  }
 }
 
 function draftCardCount(l: Loadout): number {
@@ -482,13 +571,23 @@ function catalogById(): Map<string, CardCatalogEntry> {
   return new Map((ui.catalog ?? []).map((c) => [c.id, c]));
 }
 
+// The displayed cost of a card, using the upgraded cost when relevant (some
+// cards, e.g. Barricade, get cheaper when upgraded).
+function entryCost(c: CardCatalogEntry, upgraded: boolean): string {
+  const cost = upgraded && c.upgradedCost != null ? c.upgradedCost : c.cost;
+  return cost === "X" ? "X" : String(cost);
+}
+
 function renderDeckbuilder(): void {
   const b = ui.builder;
   const wrap = el(`
     <div class="builder">
       <div class="builder-head">
-        <button id="back" class="ghost">← Back</button>
-        <h1>Deckbuilder</h1>
+        <div class="builder-titlerow">
+          <button id="back" class="ghost">← Back</button>
+          <h1>Deckbuilder</h1>
+          <button id="useDeckTop" class="primary" ${b.entries.length ? "" : "disabled"}>Use this deck (<span>${deckCount()}</span>)</button>
+        </div>
         <div class="builder-meta">
           <label>Name <input id="bname" value="${escape(b.name)}" placeholder="Ironclad" /></label>
           <label>Max HP
@@ -500,15 +599,15 @@ function renderDeckbuilder(): void {
           </label>
         </div>
         <div class="relicrow">
-          <span class="reliclbl">Relics</span>
+          <div class="relichead">
+            <span class="reliclbl">Relics (<span id="relicCount">${b.relics.length}</span>) — click to toggle</span>
+            <span class="relicadd">
+              <input id="brelic" class="search" placeholder="custom relic id…" />
+              <button id="brelicAdd" class="ghost">+ Add</button>
+            </span>
+          </div>
+          <div id="relicPicker" class="relicpicker"></div>
           <div id="relicChips" class="relicchips"></div>
-          <span class="relicadd">
-            <input id="brelic" class="search" list="relicopts" placeholder="relic id…" />
-            <datalist id="relicopts">
-              ${(ui.relicCatalog ?? []).map((r) => `<option value="${escape(r.id)}">${escape(r.name)}</option>`).join("")}
-            </datalist>
-            <button id="brelicAdd" class="ghost">+ Add relic</button>
-          </span>
         </div>
       </div>
       <div class="builder-cols">
@@ -575,27 +674,47 @@ function renderDeckbuilder(): void {
     render();
   });
   wrap.querySelector("#useDeck")!.addEventListener("click", useBuiltDeck);
+  wrap.querySelector("#useDeckTop")!.addEventListener("click", useBuiltDeck);
   wrap.querySelector("#copyJson")!.addEventListener("click", copyDeckJson);
   wrap.querySelector("#dlJson")!.addEventListener("click", downloadDeckJson);
 
+  renderRelicPicker(wrap.querySelector("#relicPicker") as HTMLElement);
   renderRelicChips(wrap.querySelector("#relicChips") as HTMLElement);
   renderCatalogList(catalogList);
   renderDeckList(wrap.querySelector("#deckList") as HTMLElement);
   app.appendChild(wrap);
 }
 
-function renderRelicChips(container: HTMLElement): void {
+// The full relic catalog as clickable toggles (selected ones are highlighted).
+function renderRelicPicker(container: HTMLElement): void {
   container.innerHTML = "";
-  const b = ui.builder;
-  if (!b.relics.length) {
-    container.appendChild(el(`<span class="muted small">none</span>`));
+  const relics = ui.relicCatalog ?? [];
+  if (!relics.length) {
+    container.appendChild(el(`<span class="muted small">No relics available.</span>`));
     return;
   }
-  const names = new Map((ui.relicCatalog ?? []).map((r) => [r.id, r.name]));
-  for (const id of b.relics) {
-    const chip = el(
-      `<span class="relicchip">${escape(names.get(id) ?? id)}<button class="rmrelic" title="Remove">✕</button></span>`,
-    );
+  const selected = new Set(ui.builder.relics);
+  for (const r of relics) {
+    const on = selected.has(r.id);
+    const node = el(`
+      <button class="relicopt ${on ? "on" : ""}" title="${escape(r.description)}">
+        <span class="relicoptname">${on ? "✓ " : ""}${escape(r.name)}</span>
+        <span class="relicoptdesc">${escape(r.description)}</span>
+      </button>`);
+    node.addEventListener("click", () => toggleRelic(r.id));
+    container.appendChild(node);
+  }
+}
+
+// Chips for selected relics that aren't in the catalog (custom/free-text ids).
+function renderRelicChips(container: HTMLElement): void {
+  container.innerHTML = "";
+  const known = new Set((ui.relicCatalog ?? []).map((r) => r.id));
+  const custom = ui.builder.relics.filter((id) => !known.has(id));
+  if (!custom.length) return;
+  container.appendChild(el(`<span class="muted small">Custom:</span>`));
+  for (const id of custom) {
+    const chip = el(`<span class="relicchip">${escape(id)}<button class="rmrelic" title="Remove">✕</button></span>`);
     chip.querySelector(".rmrelic")!.addEventListener("click", () => removeRelic(id));
     container.appendChild(chip);
   }
@@ -615,6 +734,20 @@ function renderCatalogList(container: HTMLElement): void {
     ui.builder.entries.filter((e) => e.id === id).reduce((s, e) => s + e.count, 0);
   for (const c of cards) {
     const n = inDeck(c.id);
+    if (c.supported === false) {
+      // Partially-modeled cards are shown but can't be added, so it's clear they
+      // aren't fully supported yet.
+      const node = el(`
+        <div class="catcard type-${c.type} unsupported" title="Not fully supported yet — disabled.">
+          <span class="dcost">${c.cost === "X" ? "X" : c.cost}</span>
+          <div class="catbody">
+            <div class="catname">${escape(c.name)} <span class="unsupbadge">not supported</span></div>
+            <div class="dtext">${escape(c.description)}</div>
+          </div>
+        </div>`);
+      container.appendChild(node);
+      continue;
+    }
     const node = el(`
       <div class="catcard type-${c.type}">
         <span class="dcost">${c.cost === "X" ? "X" : c.cost}</span>
@@ -624,7 +757,13 @@ function renderCatalogList(container: HTMLElement): void {
         </div>
         <div class="catadd">
           <button class="add" title="Add one copy">+ Add</button>
-          ${c.upgradable ? `<button class="addup" title="${escape(c.upgradedDescription ?? "")}">+ Add⁺</button>` : ""}
+          ${
+            c.upgradable
+              ? `<button class="addup" title="${escape(c.upgradedDescription ?? "")}">+ Add⁺${
+                  c.upgradedCost != null ? ` <span class="upcost">(${c.upgradedCost === "X" ? "X" : c.upgradedCost}⚡)</span>` : ""
+                }</button>`
+              : ""
+          }
         </div>
       </div>`);
     node.querySelector(".add")!.addEventListener("click", () => addCard(c.id, false));
@@ -648,9 +787,10 @@ function renderDeckList(container: HTMLElement): void {
   for (const e of rows) {
     const c = byId.get(e.id);
     const name = c?.name ?? e.id;
+    const cost = c ? entryCost(c, e.upgraded) : "?";
     const node = el(`
       <div class="deckrow type-${c?.type ?? "skill"} ${e.upgraded ? "upgraded" : ""}">
-        <span class="dcost">${c ? (c.cost === "X" ? "X" : c.cost) : "?"}</span>
+        <span class="dcost">${cost}</span>
         <span class="dname">${escape(name)}${e.upgraded ? "+" : ""}</span>
         <span class="rowcount">×${e.count}</span>
         <span class="rowbtns">
@@ -720,21 +860,30 @@ function renderGame(): void {
     el(`<div class="banner ${yourPriority ? "active" : ""}">Turn ${g.turn} &middot; ${escape(banner)}</div>`),
   );
 
-  // Enemies row
-  const enemyRow = el(`<div class="enemies"></div>`);
-  for (const e of enemies) enemyRow.appendChild(enemyCard(g, e));
-  board.appendChild(enemyRow);
+  // When the match is over, offer a clear way back to the main menu.
+  if (g.phase === "gameover") {
+    const gameover = el(`<div class="gameover"><button id="toMenu" class="primary">← Back to main menu</button></div>`);
+    gameover.querySelector("#toMenu")!.addEventListener("click", backToMenu);
+    board.appendChild(gameover);
+  }
 
-  // Incoming attacks summary (what's aimed at me)
+  // Battlefield: you on the left, foes on the right (Slay-the-Spire style).
+  const field = el(`<div class="battlefield"></div>`);
+  const youSide = el(`<div class="side you"></div>`);
+  youSide.appendChild(avatar(g, me, true));
   const incoming = g.pendingAttacks.filter((a) => a.targetId === g.youId);
   if (incoming.length) {
     const total = incoming.reduce((s, a) => s + (a.amount ?? 0) * a.times, 0);
-    board.appendChild(
-      el(
-        `<div class="incoming">⚔️ Incoming this turn: <b>${total}</b> damage across ${incoming.length} attack(s)</div>`,
-      ),
+    youSide.appendChild(
+      el(`<div class="incoming">⚔️ Incoming: <b>${total}</b> across ${incoming.length} attack(s)</div>`),
     );
   }
+  field.appendChild(youSide);
+  field.appendChild(el(`<div class="versus">vs</div>`));
+  const foeSide = el(`<div class="side foes"></div>`);
+  for (const e of enemies) foeSide.appendChild(avatar(g, e, false));
+  field.appendChild(foeSide);
+  board.appendChild(field);
 
   // Event log (scrollable history of what everyone has done this match)
   const logWrap = el(`<div class="logwrap"><div class="logtitle">Event log</div><div class="log" id="log"></div></div>`);
@@ -742,8 +891,8 @@ function renderGame(): void {
   for (const entry of g.log) log.appendChild(el(`<div class="logline ${logClass(entry.text)}">${escape(entry.text)}</div>`));
   board.appendChild(logWrap);
 
-  // Self panel
-  board.appendChild(selfPanel(g, me, yourPriority));
+  // Your hand + controls, docked at the bottom.
+  board.appendChild(dock(me, yourPriority));
 
   app.appendChild(board);
 
@@ -758,6 +907,9 @@ function renderGame(): void {
   // Keep the event log pinned to the newest entry.
   const logNode = board.querySelector("#log");
   if (logNode) logNode.scrollTop = logNode.scrollHeight;
+
+  // Animate the most recent card play (a card flying up from the player).
+  maybeAnimatePlay(g);
 
   // End-of-turn resolution summary (modal). Players dismiss it to advance.
   if (g.phase === "resolution" && g.resolution) {
@@ -856,33 +1008,54 @@ function deckModal(me: PlayerView): HTMLElement {
 }
 
 function resolutionModal(g: GameView, r: NonNullable<GameView["resolution"]>): HTMLElement {
-  // Blocks first — they're applied before any attack lands.
-  const blockSection = r.blocks.length
-    ? `<div class="ressection">
-        <div class="resheading">🛡 Block raised</div>
-        <ul class="reslist">
-          ${r.blocks
-            .map(
-              (b) =>
-                `<li class="resblock">
-                  <span class="resname block">${escape(b.cardName)}</span>
-                  <span>${escape(b.playerName)}</span>
-                  <span class="resdmg">+${b.amount} block</span>
-                </li>`,
-            )
-            .join("")}
-        </ul>
-      </div>`
-    : "";
+  const colorOf = (id: string) => g.players.find((p) => p.id === id)?.color ?? "var(--ink)";
+  const nameTag = (id: string, name: string) =>
+    `<span style="color:${colorOf(id)};font-weight:600">${escape(name)}</span>`;
+
+  // Blocks first — they're applied before any attack lands. Show each defender's
+  // running block total so the sources are clear.
+  let blockSection = "";
+  if (r.blocks.length) {
+    const byPlayer = new Map<string, { name: string; running: number; rows: string[] }>();
+    for (const b of r.blocks) {
+      let g2 = byPlayer.get(b.playerId);
+      if (!g2) {
+        g2 = { name: b.playerName, running: 0, rows: [] };
+        byPlayer.set(b.playerId, g2);
+      }
+      g2.running += b.amount;
+      g2.rows.push(
+        `<li class="resblock">
+          <span class="resname block">${escape(b.cardName)}</span>
+          <span class="resdmg">+${b.amount} → ${g2.running} block</span>
+        </li>`,
+      );
+    }
+    const groups = [...byPlayer.entries()]
+      .map(
+        ([id, gp]) =>
+          `<div class="resblockgroup">
+            <div class="resblockwho">${nameTag(id, gp.name)} <span class="muted">— ${gp.running} total block</span></div>
+            <ul class="reslist">${gp.rows.join("")}</ul>
+          </div>`,
+      )
+      .join("");
+    blockSection = `<div class="ressection"><div class="resheading">🛡 Block raised</div>${groups}</div>`;
+  }
 
   const attackRows = r.attacks.length
     ? r.attacks
         .map((a) => {
-          const blocked = a.blocked > 0 ? ` <span class="muted">(${a.blocked} blocked)</span>` : "";
+          const blocked =
+            a.blockBefore > 0
+              ? ` <span class="muted">(${a.blocked} blocked · block ${a.blockBefore}→${a.blockAfter})</span>`
+              : a.blocked > 0
+                ? ` <span class="muted">(${a.blocked} blocked)</span>`
+                : "";
           const lethal = a.lethal ? ` <span class="lethal">☠ lethal</span>` : "";
           return `<li class="resatk">
             <span class="resname">${escape(a.cardName)}</span>
-            <span>${escape(a.sourceName)} → ${escape(a.targetName)}</span>
+            <span>${nameTag(a.sourceId, a.sourceName)} → ${nameTag(a.targetId, a.targetName)}</span>
             <span class="resdmg">${a.damage}${a.times > 1 ? `×${a.times}` : ""} dmg · −${a.hpLost} HP${blocked}${lethal}</span>
           </li>`;
         })
@@ -893,10 +1066,27 @@ function resolutionModal(g: GameView, r: NonNullable<GameView["resolution"]>): H
     ? `<div class="resdeaths">☠ Defeated: ${r.deaths.map((d) => escape(d)).join(", ")}</div>`
     : "";
 
+  // Grand totals — the at-a-glance summary of the whole turn.
+  const totalHpLost = r.attacks.reduce((s, a) => s + a.hpLost, 0);
+  const totalBlocked = r.attacks.reduce((s, a) => s + a.blocked, 0);
+  const totalBlockRaised = r.blocks.reduce((s, b) => s + b.amount, 0);
+  const youTook = r.attacks.filter((a) => a.targetId === g.youId).reduce((s, a) => s + a.hpLost, 0);
+  const youDealt = r.attacks.filter((a) => a.sourceId === g.youId).reduce((s, a) => s + a.hpLost, 0);
+  const totals = `
+    <div class="restotals">
+      <div class="restotal big dmg"><span class="rtnum">${totalHpLost}</span><span class="rtlbl">total HP lost</span></div>
+      <div class="restotal you-took"><span class="rtnum">${youTook}</span><span class="rtlbl">you took</span></div>
+      <div class="restotal you-dealt"><span class="rtnum">${youDealt}</span><span class="rtlbl">you dealt</span></div>
+      <div class="restotal block"><span class="rtnum">${totalBlockRaised}</span><span class="rtlbl">block raised</span></div>
+      <div class="restotal blocked"><span class="rtnum">${totalBlocked}</span><span class="rtlbl">dmg blocked</span></div>
+      ${r.deaths.length ? `<div class="restotal kills"><span class="rtnum">${r.deaths.length}</span><span class="rtlbl">defeated</span></div>` : ""}
+    </div>`;
+
   const overlay = el(`
     <div class="overlay">
       <div class="modal">
         <h2>Turn ${r.turn} resolved</h2>
+        ${totals}
         ${blockSection}
         <div class="ressection">
           <div class="resheading">⚔️ Attacks</div>
@@ -924,42 +1114,56 @@ function logClass(text: string): string {
   return "";
 }
 
-function enemyCard(g: GameView, e: PlayerView): HTMLElement {
-  const incoming = g.pendingAttacks.filter((a) => a.targetId === e.id && a.sourceId === g.youId);
-  const myDmg = incoming.reduce((s, a) => s + (a.amount ?? 0) * a.times, 0);
+// A player's battlefield avatar: a colored square with a Block badge floating
+// above its head, a name plate, an HP bar, and power badges below. For enemies
+// this is the click target when picking an attack target.
+function avatar(g: GameView, p: PlayerView, isYou: boolean): HTMLElement {
+  // Block "above the head". You see the exact number; opponents only reveal
+  // whether they're blocking (fog of war), so show a shield with no count.
+  let blockBadge = "";
+  if (p.block != null) {
+    if (p.block > 0) blockBadge = `<div class="blockbadge">🛡 ${p.block}</div>`;
+  } else if (p.isBlocking) {
+    blockBadge = `<div class="blockbadge unknown">🛡</div>`;
+  }
+
+  // For enemies, preview the damage your queued attacks will do to them.
+  let hitBadge = "";
+  if (!isYou) {
+    const myHits = g.pendingAttacks.filter((a) => a.targetId === p.id && a.sourceId === g.youId);
+    const myDmg = myHits.reduce((s, a) => s + (a.amount ?? 0) * a.times, 0);
+    if (myDmg) hitBadge = `<div class="hitbadge">⚔️ ${myDmg}</div>`;
+  }
+
+  const initials = escape(p.name.slice(0, 2).toUpperCase());
+  const energy = isYou ? `<div class="avenergy">⚡ ${p.energy ?? 0}/${p.maxEnergy}</div>` : "";
+
   const node = el(`
-    <div class="enemy ${e.alive ? "" : "dead"}" data-enemy="${e.id}">
-      <div class="ename">${escape(e.name)}${e.passed ? " 💤" : ""}
+    <div class="avatarbox ${isYou ? "you" : "foe"} ${p.alive ? "" : "dead"}" ${isYou ? "" : `data-enemy="${p.id}"`}>
+      ${blockBadge}
+      <div class="avatar" style="background:${p.color}">
+        <span class="avinitials">${initials}</span>
+        ${hitBadge}
+      </div>
+      <div class="nameplate">
+        <span class="avname" style="color:${p.color}">${escape(p.name)}${isYou ? " (you)" : ""}${p.passed ? " 💤" : ""}</span>
         <button class="buildbtn ghost" title="View this player's deck & relics">🔍</button>
       </div>
-      <div class="hpbar"><div class="hpfill" style="width:${(100 * e.hp) / e.maxHp}%"></div>
-        <span>${e.hp}/${e.maxHp}</span></div>
-      <div class="badges">
-        ${e.isBlocking ? `<span class="badge block">🛡 blocking</span>` : ""}
-        ${myDmg ? `<span class="badge atk">your hit: ${myDmg}</span>` : ""}
-      </div>
-      <div class="powers">${powerBadges(e)}</div>
+      <div class="hpbar"><div class="hpfill" style="width:${(100 * p.hp) / p.maxHp}%"></div>
+        <span>${p.hp}/${p.maxHp}</span></div>
+      ${energy}
+      <div class="powers">${powerBadges(p)}</div>
     </div>`);
   node.querySelector(".buildbtn")!.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    showBuild(e.id);
+    showBuild(p.id);
   });
   return node;
 }
 
-function selfPanel(g: GameView, me: PlayerView, yourPriority: boolean): HTMLElement {
-  const panel = el(`<div class="self"></div>`);
-  panel.appendChild(
-    el(`
-    <div class="selfstats">
-      <div class="hpbar self"><div class="hpfill" style="width:${(100 * me.hp) / me.maxHp}%"></div>
-        <span>${me.hp}/${me.maxHp}</span></div>
-      <div class="stat">🛡 ${me.block ?? 0}</div>
-      <div class="stat energy">⚡ ${me.energy ?? 0}/${me.maxEnergy}</div>
-      <div class="powers">${powerBadges(me)}</div>
-    </div>`),
-  );
-
+// The bottom dock: your hand of cards plus the action controls.
+function dock(me: PlayerView, yourPriority: boolean): HTMLElement {
+  const panel = el(`<div class="dock"></div>`);
   const hand = el(`<div class="hand"></div>`);
   for (const c of me.hand ?? []) {
     const card = el(`
@@ -1001,6 +1205,41 @@ function selfPanel(g: GameView, me: PlayerView, yourPriority: boolean): HTMLElem
 
 function hasAnyPlay(me: PlayerView): boolean {
   return (me.hand ?? []).some((c) => c.playable);
+}
+
+// ---- card-play animation: a card floats up from whoever played it ----
+let lastSeenPlaySeq = 0;
+
+function maybeAnimatePlay(g: GameView): void {
+  const lp = g.lastPlay;
+  if (!lp) return;
+  if (lp.seq <= lastSeenPlaySeq) return;
+  const firstSighting = lastSeenPlaySeq === 0;
+  lastSeenPlaySeq = lp.seq;
+  // Don't replay history on first load / reconnect — only animate fresh plays.
+  if (firstSighting) return;
+  spawnPlayFlyer(g, lp);
+}
+
+function spawnPlayFlyer(g: GameView, lp: NonNullable<GameView["lastPlay"]>): void {
+  const player = g.players.find((p) => p.id === lp.playerId);
+  const color = player?.color ?? "var(--gold)";
+  // Anchor the flyer to the player's avatar if it's on screen, else a corner.
+  const anchor = document.querySelector<HTMLElement>(
+    lp.playerId === g.youId ? ".avatarbox.you" : `[data-enemy="${lp.playerId}"]`,
+  );
+  const flyer = el(
+    `<div class="playflyer type-${lp.cardType}" style="border-color:${color}">${escape(lp.cardName)}</div>`,
+  );
+  document.body.appendChild(flyer);
+  const rect = anchor?.getBoundingClientRect();
+  const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+  const y = rect ? rect.top : window.innerHeight * 0.6;
+  flyer.style.left = `${x}px`;
+  flyer.style.top = `${y}px`;
+  // Trigger the float-up animation on the next frame, then clean up.
+  requestAnimationFrame(() => flyer.classList.add("fly"));
+  setTimeout(() => flyer.remove(), 1200);
 }
 
 function powerBadges(p: PlayerView): string {

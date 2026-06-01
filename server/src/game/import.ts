@@ -1,5 +1,5 @@
 import type { ImportReport, Loadout, LoadoutCardEntry } from "@multispire/shared";
-import { canonicalCardId, hasCard } from "./cards/registry.js";
+import { canonicalCardId, getCard, hasCard, isCardSupported } from "./cards/registry.js";
 import { hasRelic } from "./relics.js";
 import type { DeckList } from "./decks.js";
 import { reportMissing } from "./missing.js";
@@ -12,7 +12,7 @@ export interface ImportedSeed {
   report: ImportReport;
 }
 
-const MAX_DECK = 200; // sanity guard against absurd imports
+const MAX_DECK = 2000; // sanity guard against absurd imports (effectively no real cap)
 
 /**
  * Validate and normalize a raw loadout into something the engine can consume.
@@ -38,6 +38,12 @@ export function importLoadout(raw: unknown): ImportedSeed {
     if (!hasCard(canonical)) {
       reportMissing("card", entry.id, "referenced by an imported deck");
       warnings.push(`Unknown card "${entry.id}" (x${entry.count}) — kept as a placeholder; add it to the registry.`);
+    } else {
+      const def = getCard(canonical);
+      if (def && !isCardSupported(def)) {
+        warnings.push(`Card "${def.name}" (x${entry.count}) isn't fully supported yet and was dropped.`);
+        continue;
+      }
     }
     for (let i = 0; i < entry.count; i++) {
       if (deck.length >= MAX_DECK) {

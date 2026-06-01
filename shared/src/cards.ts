@@ -19,7 +19,22 @@ export type TargetKind =
  * Add new `kind`s here and handle them in the engine's effect interpreter.
  */
 export type Effect =
-  | { kind: "damage"; amount: number; times?: number }
+  // `strengthMul` lets Strength count more than once (e.g. Heavy Blade = 3).
+  // `lifesteal` heals the attacker for unblocked damage dealt (e.g. Reaper).
+  // `maxHpOnKill` permanently raises the attacker's max HP if this kills (Feed).
+  // `perStrike` adds damage for each "Strike" card in the deck (Perfected Strike).
+  // `rampage` permanently raises THIS card's damage by N each time it's played
+  //   this combat (e.g. Rampage).
+  | {
+      kind: "damage";
+      amount: number;
+      times?: number;
+      strengthMul?: number;
+      lifesteal?: boolean;
+      maxHpOnKill?: number;
+      perStrike?: number;
+      rampage?: number;
+    }
   | { kind: "block"; amount: number }
   | { kind: "applyPower"; power: PowerId; amount: number; to: "enemy" | "self" }
   | { kind: "draw"; amount: number }
@@ -28,6 +43,20 @@ export type Effect =
   | { kind: "heal"; amount: number }
   // Damage equal to the caster's current block (e.g. Body Slam).
   | { kind: "damageEqualToBlock" }
+  // Double the caster's current Block (e.g. Entrench).
+  | { kind: "doubleBlock" }
+  // Double the caster's current Strength (e.g. Limit Break).
+  | { kind: "doubleStrength" }
+  // Exhaust `amount` random cards from the caster's hand (e.g. True Grit).
+  | { kind: "exhaustRandom"; amount: number }
+  // Exhaust every non-attack card in the caster's hand (e.g. Sever Soul).
+  // `blockPerCard` grants that much Block for each card exhausted (Second Wind).
+  | { kind: "exhaustNonAttacks"; blockPerCard?: number }
+  // Exhaust the caster's whole hand, then deal `perCard` damage to the target for
+  // each card exhausted (e.g. Fiend Fire).
+  | { kind: "exhaustHandForDamage"; perCard: number }
+  // Run `then` only if a target currently has `power` (e.g. Dropkick vs Vulnerable).
+  | { kind: "ifTargetHasPower"; power: PowerId; then: Effect[] }
   // Add `amount` copies of a card id to a pile (e.g. statuses, Wounds).
   | { kind: "addCardToPile"; cardId: string; amount: number; pile: "discard" | "draw" | "hand" }
   // Escape hatch: an effect we know exists but haven't modeled yet. Logged loudly.
@@ -44,10 +73,22 @@ export interface CardDef {
   target: TargetKind;
   effects: Effect[];
   exhaust?: boolean;
+  /** Effects that fire when this card is Exhausted (e.g. Sentinel gains Energy). */
+  onExhaust?: Effect[];
+  /** Ethereal: if still in hand at end of turn, it's exhausted instead of discarded. */
+  ethereal?: boolean;
   /** True if the card cannot be played (curses / some statuses). */
   unplayable?: boolean;
+  /** A play restriction the engine enforces (e.g. Clash needs an all-attack hand). */
+  requires?: "all_attacks_in_hand";
+  /**
+   * Marks a card whose real behavior is only partially modeled. When approximated
+   * cards are disabled (the default), these are shown as "not yet supported" and
+   * can't be added to a build or played.
+   */
+  approx?: boolean;
   /** Optional upgraded form, swapped in when the instance is upgraded. */
-  upgrade?: Partial<Pick<CardDef, "name" | "cost" | "effects" | "exhaust">>;
+  upgrade?: Partial<Pick<CardDef, "name" | "cost" | "effects" | "exhaust" | "ethereal" | "onExhaust">>;
 }
 
 /** Powers / buffs / debuffs that live on a player as stacks. */
@@ -55,11 +96,31 @@ export type PowerId =
   | "strength"
   | "strength_down"
   | "dexterity"
+  | "dexterity_down"
   | "vulnerable"
   | "weak"
   | "frail"
   | "regen"
   | "metallicize"
+  | "thorns"
+  | "plated_armor"
+  | "barricade"
+  | "demon_form"
+  | "artifact"
+  | "intangible"
+  | "rage"
+  | "no_block"
+  | "no_draw"
+  | "thorns_down"
+  // Whenever a card is Exhausted: gain Block (Feel No Pain) / draw a card (Dark Embrace).
+  | "feel_no_pain"
+  | "dark_embrace"
+  // Gain Energy at the start of each turn (Berserk).
+  | "berserk"
+  // Lose HP and draw at the start of each turn (Brutality).
+  | "brutality"
+  // Gain Strength whenever you lose HP from a card (Rupture).
+  | "rupture"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

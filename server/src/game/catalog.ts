@@ -1,5 +1,5 @@
 import type { CardCatalogEntry, RelicCatalogEntry } from "@multispire/shared";
-import { allCards, resolveCard } from "./cards/registry.js";
+import { allCards, isCardSupported, resolveCard } from "./cards/registry.js";
 import { RELICS } from "./relics.js";
 import { describeCard } from "./engine.js";
 
@@ -19,7 +19,11 @@ export function buildCatalog(): CardCatalogEntry[] {
         target: c.target,
         description: describeCard(base),
         upgradedDescription: up ? describeCard(up) : undefined,
+        // Surface the upgraded cost only when upgrading actually changes it
+        // (e.g. Barricade 3→2), so the deckbuilder can show the discount.
+        upgradedCost: up && up.cost !== c.cost ? up.cost : undefined,
         upgradable: !!c.upgrade,
+        supported: isCardSupported(c),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -29,6 +33,8 @@ export function buildCatalog(): CardCatalogEntry[] {
 // on import (treated as no-ops), but these are the ones we know about.
 export function buildRelicCatalog(): RelicCatalogEntry[] {
   return Object.values(RELICS)
-    .map((r) => ({ id: r.id, name: r.name }))
+    // Hide the lowercase "smooth_stone" alias; keep the canonical Oddly Smooth Stone.
+    .filter((r) => r.id !== "smooth_stone")
+    .map((r) => ({ id: r.id, name: r.name, description: r.description }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }

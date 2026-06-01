@@ -1,9 +1,23 @@
 import type { CardDef } from "@multispire/shared";
 import { reportMissing } from "../missing.js";
 import { IRONCLAD_CARDS } from "./ironclad.js";
+import { NEUTRAL_CARDS } from "./neutral.js";
 
 // All known cards, indexed by id. Future characters register their arrays here.
-const ALL: CardDef[] = [...IRONCLAD_CARDS];
+const ALL: CardDef[] = [...IRONCLAD_CARDS, ...NEUTRAL_CARDS];
+
+/**
+ * Whether cards whose real behavior is only partially modeled (`approx: true`)
+ * are allowed in play. Off by default so the UI clearly marks them unsupported
+ * and they can't be added to a build or played — we don't want half-implemented
+ * cards sneaking in. Flip to true to enable the approximations.
+ */
+export const APPROX_CARDS_ENABLED = false;
+
+/** A card is supported unless it's an approximation and approximations are off. */
+export function isCardSupported(def: CardDef): boolean {
+  return !def.approx || APPROX_CARDS_ENABLED;
+}
 
 const BY_ID = new Map<string, CardDef>(ALL.map((c) => [c.id, c]));
 
@@ -20,6 +34,32 @@ const CARD_ALIASES: Record<string, string> = {
   strike: "strike_r",
   defendr: "defend_r",
   defend: "defend_r",
+  // Multi-word ids from run exports, separators stripped + lowercased.
+  heavyblade: "heavy_blade",
+  perfectedstrike: "perfected_strike",
+  swordboomerang: "sword_boomerang",
+  truegrit: "true_grit",
+  wildstrike: "wild_strike",
+  battletrance: "battle_trance",
+  bloodforblood: "blood_for_blood",
+  burningpact: "burning_pact",
+  ghostlyarmor: "ghostly_armor",
+  powerthrough: "power_through",
+  recklesscharge: "reckless_charge",
+  searingblow: "searing_blow",
+  seeingred: "seeing_red",
+  seversoul: "sever_soul",
+  spotweakness: "spot_weakness",
+  demonform: "demon_form",
+  limitbreak: "limit_break",
+  flamebarrier: "flame_barrier",
+  bandageup: "bandage_up",
+  darkshackles: "dark_shackles",
+  dramaticentrance: "dramatic_entrance",
+  flashofsteel: "flash_of_steel",
+  goodinstincts: "good_instincts",
+  masterofstrategy: "master_of_strategy",
+  swiftstrike: "swift_strike",
 };
 
 /**

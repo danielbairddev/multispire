@@ -37,12 +37,26 @@ export interface CardCatalogEntry {
   target: TargetKind;
   description: string; // base form
   upgradedDescription?: string; // present when upgradable
+  /** Cost of the upgraded form, when upgrading changes it (e.g. Barricade 3→2). */
+  upgradedCost?: number | "X";
   upgradable: boolean;
+  /** False when this card is only partially modeled and currently disabled. */
+  supported: boolean;
 }
 
 export interface RelicCatalogEntry {
   id: string;
   name: string;
+  description: string;
+}
+
+/** A joinable open game shown on the homepage so players can join with a click. */
+export interface OpenMatchView {
+  matchId: string;
+  mode: MatchMode;
+  hostName: string;
+  playerCount: number;
+  maxPlayers: number;
 }
 
 export interface LobbyPlayer {
@@ -121,9 +135,11 @@ export interface PlayerBuild {
 export interface PlayerView {
   id: string;
   name: string;
+  /** A stable display color assigned at join, so it's clear who is who. */
+  color: string;
   hp: number;
   maxHp: number;
-  /** Your own exact block; opponents see null but get `isBlocking`. */
+  /** Current Block. Public — visible for every player. (`null` only if unknown.) */
   block: number | null;
   isBlocking: boolean;
   energy: number | null; // hidden for opponents -> null
@@ -158,6 +174,10 @@ export interface ResolutionAttack {
   times: number;
   blocked: number; // total absorbed by block
   hpLost: number; // total HP removed
+  /** Target's Block before this attack landed. */
+  blockBefore: number;
+  /** Target's Block remaining after this attack landed. */
+  blockAfter: number;
   lethal: boolean;
 }
 
@@ -195,4 +215,17 @@ export interface GameView {
   resolution?: ResolutionView | null;
   winnerId?: string | null;
   log: LogEntry[];
+  /** The most recent card play, so the client can animate it. `seq` strictly
+   *  increases; the client animates when it sees a new seq. */
+  lastPlay?: LastPlay | null;
+}
+
+/** A transient record of the most recently played card (for play animations). */
+export interface LastPlay {
+  seq: number;
+  playerId: string;
+  cardName: string;
+  cardType: CardType;
+  /** The chosen target (for an attack/targeted skill), if any. */
+  targetId?: string | null;
 }

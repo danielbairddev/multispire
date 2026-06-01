@@ -34,7 +34,7 @@ function assert(c: boolean, m: string) {
 
 // Unknown card/relic become warnings but don't crash; card stays as placeholder.
 {
-  const r = importLoadout({ deck: ["strike_r", "searing_blow"], relics: ["made_up_relic"] });
+  const r = importLoadout({ deck: ["strike_r", "totally_made_up_card"], relics: ["made_up_relic"] });
   assert(r.deck.length === 2, "unknown card kept as placeholder");
   assert(r.relics.length === 0, "unknown relic dropped");
   assert(r.report.warnings.length >= 2, "warnings for unknown card and relic");

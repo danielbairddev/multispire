@@ -29,6 +29,24 @@ export class Net {
     else this.queue.push(msg);
   }
 
+  /** Drop the current connection and open a fresh one. The server detaches the
+   *  old identity from its match on close, so we come back as a clean player. */
+  reset(): void {
+    const old = this.ws;
+    this.ws = null;
+    this.queue = [];
+    if (old) {
+      old.onclose = null; // suppress this socket's auto-reconnect; we reconnect below
+      old.onmessage = null;
+      try {
+        old.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.connect();
+  }
+
   on(listener: Listener): void {
     this.listeners.add(listener);
   }
