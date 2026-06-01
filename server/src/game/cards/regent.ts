@@ -744,9 +744,9 @@ export const REGENT_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 0,
     target: "self",
-    // Real card: gain Strength each time you play a card this turn. Not yet modeled.
-    approx: true,
-    effects: [{ kind: "unimplemented", note: "Gain 1 Strength this turn per card played" }],
+    // This turn, gain 1 temporary Strength each time you play a card.
+    effects: [{ kind: "applyPower", power: "monologue", amount: 1, to: "self" }],
+    upgrade: { retain: true },
   },
   {
     id: "orbit",
@@ -756,9 +756,8 @@ export const REGENT_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 2,
     target: "self",
-    // Real card: refunds Energy for every 4 Energy spent. Not yet modeled.
-    approx: true,
-    effects: [{ kind: "unimplemented", note: "Gain Energy for every 4 Energy spent" }],
+    // Refund 1 Energy for every 4 Energy you spend this combat.
+    effects: [{ kind: "applyPower", power: "orbit", amount: 1, to: "self" }],
     upgrade: { cost: 1 },
   },
   {
@@ -859,10 +858,17 @@ export const REGENT_CARDS: CardDef[] = [
     cost: 1,
     starCost: 3,
     target: "self",
-    // Real card also reflects blocked attack damage; only the Block is modeled.
-    approx: true,
-    effects: [{ kind: "block", amount: 17 }],
-    upgrade: { effects: [{ kind: "block", amount: 21 }] },
+    // Gain Block, and this turn reflect blocked attack damage back to attackers.
+    effects: [
+      { kind: "block", amount: 17 },
+      { kind: "applyPower", power: "reflect", amount: 1, to: "self" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 21 },
+        { kind: "applyPower", power: "reflect", amount: 1, to: "self" },
+      ],
+    },
   },
   {
     id: "resonance",
@@ -936,11 +942,11 @@ export const REGENT_CARDS: CardDef[] = [
     type: "attack",
     rarity: "uncommon",
     cost: 0,
+    // starCost -1: spend ALL Star Energy; deal damage to a random enemy that many times.
+    starCost: -1,
     target: "enemy",
-    // Real card: hits a random enemy X times (X = all Star Energy). Not yet modeled.
-    approx: true,
-    effects: [{ kind: "damage", amount: 5 }],
-    upgrade: { effects: [{ kind: "damage", amount: 7 }] },
+    effects: [{ kind: "damagePerX", amount: 5, randomTarget: true }],
+    upgrade: { effects: [{ kind: "damagePerX", amount: 7, randomTarget: true }] },
   },
   {
     id: "summon_forth",
@@ -1195,10 +1201,9 @@ export const REGENT_CARDS: CardDef[] = [
     rarity: "rare",
     cost: "X",
     target: "enemy",
-    // Real card: deal damage X times, doubling X at 4+. Not yet modeled.
-    approx: true,
-    effects: [{ kind: "damage", amount: 8 }],
-    upgrade: { effects: [{ kind: "damage", amount: 10 }] },
+    // Deal damage X times, where X is the Energy spent; X is doubled if it's 4+.
+    effects: [{ kind: "damagePerX", amount: 8, doubleAt: 4 }],
+    upgrade: { effects: [{ kind: "damagePerX", amount: 10, doubleAt: 4 }] },
   },
   {
     id: "heirloom_hammer",
@@ -1234,8 +1239,8 @@ export const REGENT_CARDS: CardDef[] = [
     rarity: "rare",
     cost: 0,
     target: "enemy",
-    // Real card: returns to hand every 3 Skills played. Not yet modeled.
-    approx: true,
+    // Deal damage. Returns to your hand whenever you play your 3rd Skill in a turn
+    // (handled in the engine's card-play hook).
     effects: [{ kind: "damage", amount: 6 }],
     upgrade: { effects: [{ kind: "damage", amount: 9 }] },
   },

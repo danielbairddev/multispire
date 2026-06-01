@@ -117,6 +117,11 @@ interface InternalPlayer {
   cardsCreatedThisCombat: number;
   // Total Star Energy spent this combat (Galactic Dust awards Block per threshold).
   starsSpentThisCombat: number;
+  // Total Energy spent this combat (Orbit refunds 1 per 4 spent).
+  energySpentThisCombat: number;
+  // The X resource spent on the card currently being played (energy for cost "X",
+  // all Star Energy for starCost -1). Feeds the damagePerX effect.
+  xThisPlay: number;
   // Whether the owner has already spent Star Energy this turn (Mini Regent).
   spentStarsThisTurn: boolean;
   // Resources queued for the start of the next turn (Convergence, Glow, Refine Blade…).
@@ -224,6 +229,8 @@ export class GameEngine {
       starsGainedThisTurn: 0,
       cardsCreatedThisCombat: 0,
       starsSpentThisCombat: 0,
+      energySpentThisCombat: 0,
+      xThisPlay: 0,
       spentStarsThisTurn: false,
       nextTurnEnergy: 0,
       nextTurnStars: 0,
@@ -421,8 +428,14 @@ export class GameEngine {
     const effCost = this.effectiveCost(p, def);
     const cost = effCost === "X" ? p.energy : effCost;
     if (typeof cost === "number" && cost > p.energy) return "Not enough energy.";
-    const starCost = def.starCost ?? 0;
-    if (starCost > p.stars) return "Not enough Star Energy.";
+    const rawStarCost = def.starCost ?? 0;
+    // starCost -1 means "spend ALL Star Energy" (e.g. Stardust); always affordable.
+    const starSpend = rawStarCost === -1 ? p.stars : rawStarCost;
+    if (starSpend > p.stars) return "Not enough Star Energy.";
+
+    // The X resource feeding damagePerX: energy spent for a cost-"X" card, plus all
+    // Star Energy spent for a starCost-(-1) card. Snapshot before we pay.
+    const xAmount = (effCost === "X" ? cost : 0) + (rawStarCost === -1 ? starSpend : 0);
 
     // Resolve target.
     const targets = this.resolveTargets(def, playerId, targetId);
@@ -430,6 +443,8 @@ export class GameEngine {
 
     // Pay + move the card out of hand.
     p.energy -= typeof cost === "number" ? cost : 0;
+    this.spendEnergy(p, typeof cost === "number" ? cost : 0);
+    p.xThisPlay = xAmount;
     p.hand.splice(idx, 1);
     if (def.exhaust) {
       // A genuine Exhaust: fire on-exhaust hooks (Sentinel, Feel No Pain, etc.).
@@ -445,7 +460,7 @@ export class GameEngine {
       p.discard.push(inst);
     }
     // Spend Star Energy after the card leaves hand (fires Star-reactive powers).
-    if (starCost > 0) this.spendStars(p, starCost);
+    if (starSpend > 0) this.spendStars(p, starSpend);
     // Per-turn play counters (Beat into Shape, Lunar Blast, Pale Blue Dot).
     if (def.type === "attack") p.attacksThisTurn += 1;
     if (def.type === "skill") p.skillsThisTurn += 1;
@@ -453,6 +468,17 @@ export class GameEngine {
     // The Sealed Throne: gain Star Energy whenever you play a card.
     const throne = p.powers.get("sealed_throne") ?? 0;
     if (throne > 0) this.gainStars(p, throne);
+    // Monologue: gain temporary Strength whenever you play a card this turn.
+    const monologue = p.powers.get("monologue") ?? 0;
+    if (monologue > 0) {
+      p.powers.set("strength", (p.powers.get("strength") ?? 0) + monologue);
+      p.powers.set("strength_down", (p.powers.get("strength_down") ?? 0) + monologue);
+    }
+    // Make It So: every 3rd Skill played this turn, return a Make It So from your
+    // discard or draw pile to your hand.
+    if (def.type === "skill" && p.skillsThisTurn % 3 === 0) {
+      this.returnCardToHand(p, "make_it_so");
+    }
     // Parry: gain Block whenever you play the Sovereign Blade.
     if (def.id === "sovereign_blade") {
       const parry = p.powers.get("parry") ?? 0;
@@ -587,6 +613,12 @@ export class GameEngine {
         // Thorns reflects back to the attacker on each hit.
         if (thorns > 0 && src.alive) thornsDealt += this.dealDamage(src, thorns).hp;
       }
+      // Reflect: deal the amount this attack was blocked back to the attacker.
+      const reflect = tgt.powers.get("reflect") ?? 0;
+      if (reflect > 0 && blocked > 0 && src.alive && src.id !== tgt.id) {
+        const r = this.dealDamage(src, blocked);
+        if (r.hp > 0) this.pushLog(`✦ ${tgt.name}'s Reflect deals ${r.hp} to ${src.name}.`);
+      }
       const lethal = tgt.hp <= 0;
       // Reaper-style lifesteal: heal the attacker for unblocked damage dealt.
       if (atk.lifesteal && hpLost > 0 && src.alive) {
@@ -699,6 +731,9 @@ export class GameEngine {
       this.expireTemporaryStrength(p);
       this.expireTemporaryDexterity(p);
       this.expireTemporaryThorns(p);
+      // Monologue / Reflect last only for the turn they're played.
+      p.powers.delete("monologue");
+      p.powers.delete("reflect");
       this.decayPowers(p);
     }
     this.resolutionData = null;
@@ -925,6 +960,36 @@ export class GameEngine {
           if (gaze > 0 && tid !== source.id) {
             tgt.powers.set("strength", (tgt.powers.get("strength") ?? 0) - 1);
           }
+        }
+        break;
+      }
+      case "damagePerX": {
+        // Heavenly Drill / Stardust: deal `amount` damage X times, where X is the
+        // resource spent on this card (energy for cost "X", all Stars for starCost -1).
+        let times = source.xThisPlay;
+        if (eff.doubleAt !== undefined && times >= eff.doubleAt) times *= 2;
+        for (let h = 0; h < times; h++) {
+          // randomTarget (Stardust): each hit picks a fresh random living enemy.
+          let tid: string | undefined;
+          if (eff.randomTarget) {
+            const enemies = this.order
+              .map((id) => this.players.get(id)!)
+              .filter((q) => q.alive && q.id !== source.id);
+            if (enemies.length === 0) break;
+            tid = enemies[Math.floor(this.rng() * enemies.length)].id;
+          } else {
+            tid = targets[0];
+          }
+          const tgt = tid ? this.players.get(tid) : undefined;
+          if (!tgt) continue;
+          this.pending.push({
+            uid: uid("atk"),
+            sourceId: source.id,
+            targetId: tgt.id,
+            cardName: def.name,
+            perHit: this.computeDamage(eff.amount, source, tgt, true),
+            times: 1,
+          });
         }
         break;
       }
@@ -1324,6 +1389,37 @@ export class GameEngine {
     p.usesStars = true;
     p.starsGainedThisTurn += amount;
     this.starReactive(p, amount);
+  }
+
+  /** Move the first card matching `cardId` from draw/discard into hand (Make It So). */
+  private returnCardToHand(p: InternalPlayer, cardId: string): void {
+    for (const pile of [p.discard, p.draw]) {
+      const i = pile.findIndex((c) => c.id === cardId);
+      if (i !== -1) {
+        const [c] = pile.splice(i, 1);
+        p.hand.push(c);
+        const cdef = resolveCard(c.id, c.upgraded);
+        this.pushLog(`✦ ${p.name} returns ${cdef?.name ?? c.id} to hand.`);
+        return;
+      }
+    }
+  }
+
+  /** Track Energy spent this combat (Orbit refunds 1 per 4 spent). Energy is already
+   *  deducted by the caller; this only handles combat tally + Orbit refunds. */
+  private spendEnergy(p: InternalPlayer, amount: number): void {
+    if (amount <= 0) return;
+    const orbit = p.powers.get("orbit") ?? 0;
+    if (orbit > 0) {
+      const before = Math.floor(p.energySpentThisCombat / 4);
+      const after = Math.floor((p.energySpentThisCombat + amount) / 4);
+      const refund = (after - before) * orbit;
+      if (refund > 0) {
+        p.energy += refund;
+        this.pushLog(`✦ ${p.name} refunds ${refund} Energy (Orbit).`);
+      }
+    }
+    p.energySpentThisCombat += amount;
   }
 
   /** Spend Star Energy (already validated affordable). Fires Star-reactive powers. */
@@ -1988,6 +2084,12 @@ export function describeCard(def: CardDef): string {
       case "replayChosenSkill":
         parts.push(`Choose a Skill in your hand and play it ${e.times} times`);
         break;
+      case "damagePerX": {
+        const tgt = e.randomTarget ? " to random enemies" : "";
+        const dbl = e.doubleAt !== undefined ? ` (X is doubled if X ≥ ${e.doubleAt})` : "";
+        parts.push(`Deal ${e.amount} damage${tgt} X times${dbl}`);
+        break;
+      }
       case "unimplemented":
         parts.push("(unimplemented)");
         break;
@@ -2002,7 +2104,8 @@ export function describeCard(def: CardDef): string {
     text += ` When Exhausted: ${inner}.`;
   }
   if (def.ethereal) text += " Ethereal.";
-  if (def.starCost) text += ` Costs ${def.starCost} Star Energy.`;
+  if (def.starCost === -1) text += " Spends all your Star Energy.";
+  else if (def.starCost) text += ` Costs ${def.starCost} Star Energy.`;
   if (def.retain) text += " Retain.";
   return text;
 }

@@ -117,6 +117,11 @@ export type Effect =
   // Interactive: choose a Skill in hand and play its effects `times` times
   // (e.g. Decisions, Decisions). The engine pauses for the pick.
   | { kind: "replayChosenSkill"; times: number }
+  // Deal `amount` damage X times, where X is the resource spent on this card
+  // (energy for an "X" cost, or all Star Energy for a starCost of -1). `doubleAt`
+  // doubles X when X is at least that value (Heavenly Drill). `randomTarget` picks
+  // a fresh random living enemy for each hit (Stardust).
+  | { kind: "damagePerX"; amount: number; doubleAt?: number; randomTarget?: boolean }
   // Escape hatch: an effect we know exists but haven't modeled yet. Logged loudly.
   | { kind: "unimplemented"; note: string };
 
@@ -230,6 +235,13 @@ export type PowerId =
   | "sword_sage"
   // If you play 5+ cards in a turn, draw N at the start of your next turn (Pale Blue Dot).
   | "pale_blue_dot"
+  // Whenever you play a card this turn, gain N temporary Strength (Monologue). Cleared end of turn.
+  | "monologue"
+  // When you take unblocked attack damage this turn, deal the blocked amount back
+  // to the attacker (Reflect). Cleared end of turn.
+  | "reflect"
+  // Whenever you spend 4 total Energy this combat, refund 1 Energy (Orbit).
+  | "orbit"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

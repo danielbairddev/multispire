@@ -77,6 +77,12 @@ export const POWERS: Record<string, PowerDef> = {
   sword_sage: { id: "sword_sage", name: "Sword Sage", kind: "buff" },
   // Pale Blue Dot: if you play 5+ cards in a turn, draw N at the start of your next turn.
   pale_blue_dot: { id: "pale_blue_dot", name: "Pale Blue Dot", kind: "buff" },
+  // Monologue: gain N temporary Strength whenever you play a card this turn. Cleared end of turn.
+  monologue: { id: "monologue", name: "Monologue", kind: "buff" },
+  // Reflect: deal the blocked amount back to attackers this turn. Cleared end of turn.
+  reflect: { id: "reflect", name: "Reflect", kind: "buff" },
+  // Orbit: refund 1 Energy for every 4 total Energy you spend this combat.
+  orbit: { id: "orbit", name: "Orbit", kind: "buff" },
 };
 
 export function getPower(id: PowerId): PowerDef {

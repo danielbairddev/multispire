@@ -699,4 +699,107 @@ const blockOf = (g: GameEngine, id: string) =>
   assert((g.viewFor("a").players.find((p) => p.id === "a")!.stars ?? 0) >= stars0 + 1, "Lunar Pastry adds a Star at end of turn");
 }
 
+const energyOf = (g: GameEngine, id: string) =>
+  g.viewFor(id).players.find((p) => p.id === id)!.energy ?? 0;
+
+// --- Regent: Monologue grants temporary Strength per card played this turn ---
+{
+  const g = regentSolo([{ id: "monologue" }, { id: "strike_reg" }, { id: "defend_reg" }]);
+  assert(play(g, "a", "monologue") === null, "Monologue plays");
+  // Playing Monologue itself doesn't grant Strength (power applies after the hook).
+  assert(powerOf(g, "a", "strength") === 0, "Monologue: no Strength before another card");
+  assert(play(g, "a", "strike_reg", "b") === null, "Strike plays under Monologue");
+  assert(powerOf(g, "a", "strength") === 1, "Monologue: +1 Strength after a card play");
+  assert(play(g, "a", "defend_reg") === null, "Defend plays under Monologue");
+  assert(powerOf(g, "a", "strength") === 2, "Monologue: +1 more Strength per card");
+  finishTurn(g);
+  // Temporary Strength expires at end of turn.
+  assert(powerOf(g, "a", "strength") === 0, "Monologue Strength is temporary");
+}
+
+// --- Regent: Reflect deals blocked damage back to the attacker ---
+{
+  const g = new GameEngine("refl", seededRng(7));
+  g.addPlayer({ id: "a", name: "A", deck: [{ id: "reflect" }, { id: "defend_reg" }], relics: ["divine_right"], maxHp: 200 });
+  g.addPlayer({ id: "b", name: "B", deck: [{ id: "strike_r" }, { id: "strike_r" }, { id: "strike_r" }], maxHp: 200 });
+  g.start();
+  assert(play(g, "a", "reflect") === null, "Reflect plays (1 energy, 3 Stars)");
+  assert(powerOf(g, "a", "reflect") === 1, "Reflect power applied");
+  const bBefore = hpOf(g, "b");
+  assert(play(g, "b", "strike_r", "a") === null, "B strikes A");
+  finishTurn(g);
+  // A had 17 Block; B's 6-damage Strike is fully blocked, and 6 reflects back to B.
+  assert(hpOf(g, "b") === bBefore - 6, "Reflect deals the blocked 6 back to B (got " + (bBefore - hpOf(g, "b")) + ")");
+  assert(powerOf(g, "a", "reflect") === 0, "Reflect clears at end of turn");
+}
+
+// --- Regent: Orbit refunds 1 Energy for every 4 Energy spent this combat ---
+{
+  const g = new GameEngine("orb", seededRng(7));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "orbit" }, { id: "defend_reg" }, { id: "defend_reg" }, { id: "strike_reg" }],
+    relics: ["divine_right", "philosophers_stone"],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  assert(energyOf(g, "a") === 4, "Philosopher's Stone gives 4 energy");
+  assert(play(g, "a", "orbit") === null, "Orbit plays (cost 2)"); // spent 2, energy 2
+  assert(play(g, "a", "defend_reg") === null, "first Defend plays"); // spent 3, energy 1
+  assert(play(g, "a", "defend_reg") === null, "second Defend plays"); // spent 4 -> refund 1
+  assert(energyOf(g, "a") === 1, "Orbit refunds 1 Energy at 4 spent (got " + energyOf(g, "a") + ")");
+}
+
+// --- Regent: Make It So returns to hand on your 3rd Skill this turn ---
+{
+  const g = regentSolo([
+    { id: "make_it_so" },
+    { id: "defend_reg" },
+    { id: "defend_reg" },
+    { id: "defend_reg" },
+  ]);
+  assert(play(g, "a", "make_it_so", "b") === null, "Make It So plays");
+  assert(!handOf(g, "a").some((c) => c.id === "make_it_so"), "Make It So left hand");
+  play(g, "a", "defend_reg");
+  play(g, "a", "defend_reg");
+  assert(!handOf(g, "a").some((c) => c.id === "make_it_so"), "not back after 2 Skills");
+  play(g, "a", "defend_reg");
+  assert(handOf(g, "a").some((c) => c.id === "make_it_so"), "Make It So returns to hand after the 3rd Skill");
+}
+
+// --- Regent: Heavenly Drill deals X hits (X = Energy spent), doubled at 4+ ---
+{
+  const g = regentSolo([{ id: "heavenly_drill" }]);
+  const bBefore = hpOf(g, "b");
+  assert(play(g, "a", "heavenly_drill", "b") === null, "Heavenly Drill plays for X");
+  finishTurn(g);
+  // 3 energy -> X=3 (not doubled) -> 3 hits of 8 = 24.
+  assert(hpOf(g, "b") === bBefore - 24, "Heavenly Drill: 3 hits of 8 = 24 (got " + (bBefore - hpOf(g, "b")) + ")");
+}
+{
+  const g = new GameEngine("hd2", seededRng(7));
+  g.addPlayer({ id: "a", name: "A", deck: [{ id: "heavenly_drill" }], relics: ["divine_right", "philosophers_stone"], maxHp: 200 });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  const bBefore = hpOf(g, "b");
+  assert(play(g, "a", "heavenly_drill", "b") === null, "Heavenly Drill plays with 4 energy");
+  finishTurn(g);
+  // 4 energy -> X=4 -> doubled to 8 hits of 8 = 64.
+  assert(hpOf(g, "b") === bBefore - 64, "Heavenly Drill doubles X at 4+: 8 hits of 8 = 64 (got " + (bBefore - hpOf(g, "b")) + ")");
+}
+
+// --- Regent: Stardust spends all Stars, hitting random enemies X times ---
+{
+  const g = regentSolo([{ id: "stardust" }]);
+  assert(starsOf(g, "a") === 3, "Divine Right grants 3 Stars for Stardust");
+  const bBefore = hpOf(g, "b");
+  assert(play(g, "a", "stardust", "b") === null, "Stardust plays");
+  assert(starsOf(g, "a") === 0, "Stardust spends all Star Energy");
+  finishTurn(g);
+  // X = 3 Stars spent -> 3 hits of 5 = 15 (single opponent, so all land on B).
+  assert(hpOf(g, "b") === bBefore - 15, "Stardust: 3 hits of 5 = 15 (got " + (bBefore - hpOf(g, "b")) + ")");
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);
