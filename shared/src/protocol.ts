@@ -10,6 +10,8 @@ export type ClientMessage =
   | { t: "join"; name: string; matchId?: string; mode?: MatchMode; loadout?: Loadout }
   | { t: "startMatch" } // host kicks off the game from the lobby
   | { t: "playCard"; cardUid: string; targetId?: string }
+  // Resolve a pending card-selection prompt (Headbutt, Warcry, Burning Pact).
+  | { t: "chooseCards"; uids: string[] }
   | { t: "pass" }
   // Dismiss the end-of-turn resolution summary; the turn advances once everyone has.
   | { t: "ackResolution" }
@@ -96,6 +98,8 @@ export interface CardView {
   description: string;
   playable: boolean; // enough energy + legal to play right now
   upgraded: boolean;
+  /** Star Energy cost (Regent cards), when the card has one. */
+  starCost?: number;
 }
 
 export interface PowerView {
@@ -144,6 +148,12 @@ export interface PlayerView {
   isBlocking: boolean;
   energy: number | null; // hidden for opponents -> null
   maxEnergy: number;
+  /** Regent Star Energy (second resource). Hidden for opponents -> null. */
+  stars: number | null;
+  /** Regent Forge: accumulated Sovereign Blade bonus damage. Public; 0 if unused. */
+  forge: number;
+  /** Whether this player uses the Regent's Star/Forge resources (HUD gating). */
+  usesStars: boolean;
   powers: PowerView[];
   handCount: number;
   drawCount: number;
@@ -199,6 +209,18 @@ export interface ResolutionView {
   waitingOn: string[]; // names of players who haven't dismissed yet
 }
 
+/** A card-selection prompt the engine is paused on, shown only to the chooser. */
+export interface PendingChoiceView {
+  /** Human prompt, e.g. "Choose a card to Exhaust". */
+  prompt: string;
+  /** Which pile the eligible cards come from (for the heading). */
+  source: "hand" | "discard";
+  /** How many cards must be picked. */
+  pick: number;
+  /** The eligible cards to choose among. */
+  cards: CardView[];
+}
+
 export type Phase = "lobby" | "action" | "resolution" | "gameover";
 
 export interface GameView {
@@ -213,6 +235,8 @@ export interface GameView {
   pendingAttacks: PendingAttackView[];
   /** Present while a turn's results are being shown and acknowledged. */
   resolution?: ResolutionView | null;
+  /** Present (for the choosing player only) while a card-selection prompt is open. */
+  pendingChoice?: PendingChoiceView | null;
   winnerId?: string | null;
   log: LogEntry[];
   /** The most recent card play, so the client can animate it. `seq` strictly

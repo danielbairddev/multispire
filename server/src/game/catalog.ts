@@ -7,7 +7,7 @@ import { describeCard } from "./engine.js";
 // aren't things you'd choose to put in a deck, so they're left out.
 export function buildCatalog(): CardCatalogEntry[] {
   return allCards()
-    .filter((c) => c.type !== "status" && c.type !== "curse" && !c.unplayable)
+    .filter((c) => c.type !== "status" && c.type !== "curse" && !c.unplayable && !c.token)
     .map((c) => {
       const base = resolveCard(c.id, false)!;
       const up = c.upgrade ? resolveCard(c.id, true)! : null;

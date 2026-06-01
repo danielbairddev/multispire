@@ -7,6 +7,7 @@ import type {
   GameView,
   LogEntry,
   PendingAttackView,
+  PendingChoiceView,
   PlayerBuild,
   PlayerView,
   PowerView,
@@ -14,7 +15,7 @@ import type {
   ResolutionBlock,
   ResolutionView,
 } from "@multispire/shared";
-import { isCardSupported, resolveCard } from "./cards/registry.js";
+import { cardsForCharacter, isCardSupported, resolveCard } from "./cards/registry.js";
 import { getRelic } from "./relics.js";
 import {
   FRAIL_MULT,
@@ -92,7 +93,46 @@ interface InternalPlayer {
   relics: string[];
   passed: boolean;
   alive: boolean;
+  // Number of times this player has lost HP this combat (Blood for Blood discount).
+  hpLossCount: number;
+  // --- Regent resources ---
+  // Star Energy: a second resource that persists across turns within a combat.
+  stars: number;
+  // Forge: accumulated bonus damage on the Sovereign Blade this combat.
+  forge: number;
+  // True for Regent players (deck contains Regent cards): start with Stars and
+  // surface the Star/Forge HUD. Non-Regent players ignore the whole system.
+  usesStars: boolean;
+  // Attacks played this turn (Beat into Shape Forges per other attack).
+  attacksThisTurn: number;
+  // Resources queued by Convergence for the start of the next turn.
+  nextTurnEnergy: number;
+  nextTurnStars: number;
+  // One-shot: keep the whole hand at the next end-of-turn cleanup (Convergence).
+  retainHandOnce: boolean;
   seedDeck: DeckList; // the build they brought, for the build viewer
+}
+
+// The Regent enters a fight with this much Star Energy.
+
+// A card-selection the engine is paused on. The played card has already left the
+// hand and been paid for; we're waiting for `playerId` to pick cards, after which
+// `remaining` effects finish and the play completes.
+type ChoiceKind = "putDiscardOnDraw" | "putHandOnDraw" | "exhaustChosen" | "replaySkill";
+interface PendingChoice {
+  playerId: string;
+  kind: ChoiceKind;
+  source: "hand" | "discard";
+  prompt: string;
+  pick: number;
+  // Continuation: the rest of the played card's effects, and its context.
+  remaining: Effect[];
+  effSource: InternalPlayer;
+  targets: string[];
+  def: CardDef;
+  instUid?: string;
+  // replaySkill only: how many times to play the chosen Skill.
+  replayTimes?: number;
 }
 
 export interface PlayerSeed {
@@ -124,6 +164,9 @@ export class GameEngine {
   // Rampage: per-card-instance bonus damage accumulated over this combat, keyed
   // by the card instance uid.
   private rampageStacks = new Map<string, number>();
+  // A card-selection the engine is paused on (Headbutt, Warcry, Burning Pact).
+  // While set, no other play/pass is accepted until the chooser resolves it.
+  private pendingChoice: PendingChoice | null = null;
   private rng: () => number;
 
   constructor(matchId: string, rng: () => number = Math.random) {
@@ -155,6 +198,14 @@ export class GameEngine {
       relics: seed.relics ?? [],
       passed: false,
       alive: true,
+      hpLossCount: 0,
+      stars: 0,
+      forge: 0,
+      usesStars: seed.deck.some((spec) => resolveCard(spec.id, false)?.character === "regent"),
+      attacksThisTurn: 0,
+      nextTurnEnergy: 0,
+      nextTurnStars: 0,
+      retainHandOnce: false,
       seedDeck: seed.deck,
     };
     // Apply relic starting effects (self-targeted ones; enemy-targeted ones like
@@ -162,6 +213,10 @@ export class GameEngine {
     for (const id of p.relics) {
       const r = getRelic(id);
       if (!r) continue;
+      if (r.startingStars) {
+        p.stars += r.startingStars;
+        p.usesStars = true;
+      }
       if (r.bonusMaxHp) {
         p.maxHp += r.bonusMaxHp;
         p.hp += r.bonusMaxHp;
@@ -221,17 +276,35 @@ export class GameEngine {
       // Demon Form: gain Strength at the top of each turn.
       const demon = p.powers.get("demon_form") ?? 0;
       if (demon > 0) p.powers.set("strength", (p.powers.get("strength") ?? 0) + demon);
-      // Clean up the leftover hand: Ethereal cards exhaust, the rest discard.
+      // Furnace / Hammer Time: Forge at the start of each turn.
+      const autoForge = p.powers.get("auto_forge") ?? 0;
+      if (autoForge > 0) this.forge(p, autoForge);
+      // Clean up the leftover hand: Convergence retains everything once; otherwise
+      // Retain keeps the card, Ethereal exhausts it, everything else discards.
       const leftover = p.hand;
+      const keepAll = p.retainHandOnce;
+      p.retainHandOnce = false;
       p.hand = [];
       for (const c of leftover) {
         const cdef = resolveCard(c.id, c.upgraded);
-        if (cdef?.ethereal) this.exhaustCard(p, c);
+        if (keepAll || cdef?.retain) p.hand.push(c);
+        else if (cdef?.ethereal) this.exhaustCard(p, c);
         else p.discard.push(c);
       }
+      // New turn: reset per-turn counters and pay out any queued (Convergence)
+      // resources before drawing.
+      p.attacksThisTurn = 0;
+      if (p.nextTurnStars > 0) {
+        this.gainStars(p, p.nextTurnStars);
+        p.nextTurnStars = 0;
+      }
+      // Bombardment and friends auto-play from the Exhaust pile each turn.
+      this.autoPlayFromExhaust(p);
       this.drawCards(p, HAND_SIZE);
-      // Refresh energy (+ relic bonuses), and apply first-turn extra draw.
-      let energy = p.maxEnergy;
+      // Refresh energy (+ relic bonuses + queued Convergence energy), and apply
+      // first-turn extra draw.
+      let energy = p.maxEnergy + p.nextTurnEnergy;
+      p.nextTurnEnergy = 0;
       let extraDraw = 0;
       // Berserk: extra Energy at the start of each turn.
       energy += p.powers.get("berserk") ?? 0;
@@ -248,6 +321,7 @@ export class GameEngine {
       const brutality = p.powers.get("brutality") ?? 0;
       if (brutality > 0) {
         p.hp = Math.max(1, p.hp - brutality);
+        p.hpLossCount++;
         this.drawCards(p, brutality);
       }
       p.energy = energy;
@@ -272,6 +346,7 @@ export class GameEngine {
   /** A player plays a card. Returns null on success or an error string. */
   playCard(playerId: string, cardUid: string, targetId?: string): string | null {
     if (this.phase !== "action") return "Not in the action phase.";
+    if (this.pendingChoice) return "Resolve the current card selection first.";
     if (this.priorityId !== playerId) return "It is not your priority.";
     const p = this.players.get(playerId);
     if (!p || !p.alive) return "You are not in this match.";
@@ -286,8 +361,11 @@ export class GameEngine {
     const restriction = this.playRestriction(p, def);
     if (restriction) return restriction;
 
-    const cost = def.cost === "X" ? p.energy : def.cost;
+    const effCost = this.effectiveCost(p, def);
+    const cost = effCost === "X" ? p.energy : effCost;
     if (typeof cost === "number" && cost > p.energy) return "Not enough energy.";
+    const starCost = def.starCost ?? 0;
+    if (starCost > p.stars) return "Not enough Star Energy.";
 
     // Resolve target.
     const targets = this.resolveTargets(def, playerId, targetId);
@@ -299,12 +377,20 @@ export class GameEngine {
     if (def.exhaust) {
       // A genuine Exhaust: fire on-exhaust hooks (Sentinel, Feel No Pain, etc.).
       this.exhaustCard(p, inst);
+    } else if (def.reshuffleOnPlay) {
+      // Sovereign Blade cycles back into the draw pile after each use.
+      p.draw.push(inst);
+      this.shuffle(p.draw);
     } else if (def.type === "power") {
       // Powers leave play but don't count as "Exhausted" for exhaust synergies.
       p.exhaust.push(inst);
     } else {
       p.discard.push(inst);
     }
+    // Spend Star Energy after the card leaves hand (fires Star-reactive powers).
+    if (starCost > 0) this.spendStars(p, starCost);
+    // Count attacks this turn (Beat into Shape Forges per other attack played).
+    if (def.type === "attack") p.attacksThisTurn += 1;
 
     const cardLabel = `${def.name}${inst.upgraded ? "+" : ""}`;
     const targetSuffix = targets.length === 1 && targets[0] !== playerId ? ` → ${this.name(targets[0])}` : "";
@@ -319,9 +405,18 @@ export class GameEngine {
       targetId: targets.length === 1 && targets[0] !== playerId ? targets[0] : null,
     };
 
-    // Execute effects: damage is deferred, everything else is immediate.
-    for (const eff of def.effects) this.applyEffect(eff, p, targets, def, inst.uid);
+    // Execute effects: damage is deferred, everything else is immediate. An
+    // interactive choice (Headbutt/Warcry/Burning Pact) pauses here; the rest of
+    // the effects and the post-play sequence run from resolveChoice() instead.
+    const paused = this.applyEffectList(def.effects, p, targets, def, inst.uid);
+    if (paused) return null;
 
+    this.finishPlay(p, def);
+    return null;
+  }
+
+  /** Post-play sequence: Rage block, reset the pass round, advance, check deaths. */
+  private finishPlay(p: InternalPlayer, def: CardDef): void {
     // Rage: gain Block whenever you play an Attack this turn.
     const rage = p.powers.get("rage") ?? 0;
     if (def.type === "attack" && rage > 0) this.gainBlock(p, rage, "Rage");
@@ -330,14 +425,21 @@ export class GameEngine {
     for (const q of this.players.values()) q.passed = false;
     p.passed = false;
 
-    this.advancePriority(playerId);
+    this.advancePriority(p.id);
     this.checkDeaths();
-    return null;
+  }
+
+  /** Energy cost after any state-dependent discount (e.g. Blood for Blood). */
+  private effectiveCost(p: InternalPlayer, def: CardDef): number | "X" {
+    if (def.cost === "X") return "X";
+    if (def.dynamicCost === "hp_loss") return Math.max(0, def.cost - p.hpLossCount);
+    return def.cost;
   }
 
   /** A player passes priority. */
   pass(playerId: string): string | null {
     if (this.phase !== "action") return "Not in the action phase.";
+    if (this.pendingChoice) return "Resolve the current card selection first.";
     if (this.priorityId !== playerId) return "It is not your priority.";
     const p = this.players.get(playerId)!;
     p.passed = true;
@@ -463,6 +565,7 @@ export class GameEngine {
       if (burns <= 0) continue;
       const dmg = burns * 2;
       p.hp = Math.max(0, p.hp - dmg);
+      p.hpLossCount++;
       this.pushLog(`🔥 ${p.name} takes ${dmg} from Burn.`);
     }
 
@@ -520,6 +623,170 @@ export class GameEngine {
     this.pushLog(`--- Turn ${this.turn}: ${this.name(this.startingPlayerId!)} starts ---`);
   }
 
+  // ----------------------------------------------------------------- choices
+
+  // Run a list of effects in order. If one is an interactive card-selection,
+  // pause: stash the remaining effects and return true. The caller (playCard or
+  // resolveChoice) must NOT run the post-play sequence until a later resolveChoice
+  // returns false. Auto-resolves a choice when there's nothing to decide.
+  private applyEffectList(
+    effects: Effect[],
+    source: InternalPlayer,
+    targets: string[],
+    def: CardDef,
+    instUid?: string,
+  ): boolean {
+    for (let i = 0; i < effects.length; i++) {
+      const eff = effects[i];
+      if (this.isChoiceEffect(eff)) {
+        const paused = this.beginChoice(eff, source, targets, def, effects.slice(i + 1), instUid);
+        if (paused) return true;
+        continue; // auto-resolved (or nothing eligible); run the rest
+      }
+      this.applyEffect(eff, source, targets, def, instUid);
+    }
+    return false;
+  }
+
+  private isChoiceEffect(
+    eff: Effect,
+  ): eff is Extract<
+    Effect,
+    { kind: "putDiscardOnDraw" | "putHandOnDraw" | "exhaustChosen" | "replayChosenSkill" }
+  > {
+    return (
+      eff.kind === "putDiscardOnDraw" ||
+      eff.kind === "putHandOnDraw" ||
+      eff.kind === "exhaustChosen" ||
+      eff.kind === "replayChosenSkill"
+    );
+  }
+
+  // Skills eligible to be replayed by Decisions, Decisions: a Skill that needs no
+  // target (self/none) and contains no nested interactive choice (so replaying it
+  // can't pause again). Keeps the replay simple and safe.
+  private replayableSkills(p: InternalPlayer): CardInstance[] {
+    return p.hand.filter((c) => {
+      const d = resolveCard(c.id, c.upgraded);
+      if (!d || d.type !== "skill") return false;
+      if (d.target !== "self" && d.target !== "none") return false;
+      if (!isCardSupported(d)) return false;
+      return !d.effects.some((e) => this.isChoiceEffect(e));
+    });
+  }
+
+  // Begin a card selection. Returns true if the engine is now paused waiting for
+  // the player; false if it auto-resolved (≤pick eligible) or was skipped (none).
+  private beginChoice(
+    eff: Effect,
+    source: InternalPlayer,
+    targets: string[],
+    def: CardDef,
+    remaining: Effect[],
+    instUid?: string,
+  ): boolean {
+    if (!this.isChoiceEffect(eff)) return false;
+    const kind: ChoiceKind = eff.kind === "replayChosenSkill" ? "replaySkill" : eff.kind;
+    const replayTimes = eff.kind === "replayChosenSkill" ? eff.times : undefined;
+    const sourcePile: "hand" | "discard" = kind === "putDiscardOnDraw" ? "discard" : "hand";
+    // The eligible pool: replaySkill is limited to replayable Skills in hand.
+    const eligible =
+      kind === "replaySkill"
+        ? this.replayableSkills(source)
+        : sourcePile === "discard"
+          ? source.discard.slice()
+          : source.hand.slice();
+    if (eligible.length === 0) return false; // nothing to choose; skip silently
+    const pick = kind === "replaySkill" ? 1 : Math.min((eff as { amount: number }).amount, eligible.length);
+    if (eligible.length <= pick) {
+      // Forced selection of everything eligible; resolve immediately.
+      this.performChoice(kind, source, eligible.map((c) => c.uid), replayTimes);
+      return false;
+    }
+    this.pendingChoice = {
+      playerId: source.id,
+      kind,
+      source: sourcePile,
+      prompt: this.choicePrompt(kind, pick),
+      pick,
+      remaining,
+      effSource: source,
+      targets,
+      def,
+      instUid,
+      replayTimes,
+    };
+    return true;
+  }
+
+  private choicePrompt(kind: ChoiceKind, pick: number): string {
+    const n = pick > 1 ? `${pick} cards` : "a card";
+    switch (kind) {
+      case "putDiscardOnDraw":
+        return `Choose ${n} from your discard to put on top of your draw pile`;
+      case "putHandOnDraw":
+        return `Choose ${n} from your hand to put on top of your draw pile`;
+      case "exhaustChosen":
+        return `Choose ${n} to Exhaust`;
+      case "replaySkill":
+        return `Choose a Skill to play again`;
+    }
+  }
+
+  // Carry out the chosen movement. `uids` are already validated by the caller.
+  private performChoice(kind: ChoiceKind, source: InternalPlayer, uids: string[], replayTimes?: number): void {
+    const pile = kind === "putDiscardOnDraw" ? source.discard : source.hand;
+    const chosen: CardInstance[] = [];
+    for (const u of uids) {
+      const idx = pile.findIndex((c) => c.uid === u);
+      if (idx !== -1) chosen.push(pile.splice(idx, 1)[0]);
+    }
+    if (chosen.length === 0) return;
+    if (kind === "replaySkill") {
+      // Decisions, Decisions: play the chosen Skill `replayTimes` times. The card
+      // has been removed from hand above; resolve its effects, then discard/exhaust.
+      const c = chosen[0];
+      const d = resolveCard(c.id, c.upgraded)!;
+      const tgts = d.target === "self" ? [source.id] : [];
+      const times = replayTimes ?? 1;
+      for (let i = 0; i < times; i++) {
+        for (const e of d.effects) this.applyEffect(e, source, tgts, d, c.uid);
+      }
+      if (d.exhaust) this.exhaustCard(source, c);
+      else source.discard.push(c);
+      this.pushLog(`✦ ${source.name} plays ${d.name} ${times} times.`);
+      return;
+    }
+    if (kind === "exhaustChosen") {
+      for (const c of chosen) this.exhaustCard(source, c);
+      const names = chosen.map((c) => resolveCard(c.id, c.upgraded)?.name ?? c.id).join(", ");
+      this.pushLog(`✦ ${source.name} exhausts ${names}.`);
+    } else {
+      // Put on TOP of the draw pile = end of the array (drawCards pops from the end).
+      for (const c of chosen) source.draw.push(c);
+      const names = chosen.map((c) => resolveCard(c.id, c.upgraded)?.name ?? c.id).join(", ");
+      this.pushLog(`✦ ${source.name} puts ${names} on top of their draw pile.`);
+    }
+  }
+
+  /** Resolve a pending card-selection prompt. Returns null on success or an error. */
+  resolveChoice(playerId: string, uids: string[]): string | null {
+    const pc = this.pendingChoice;
+    if (!pc) return "No card selection is pending.";
+    if (pc.playerId !== playerId) return "It is not your selection to make.";
+    const pile = pc.source === "discard" ? pc.effSource.discard : pc.effSource.hand;
+    const valid = [...new Set(uids)].filter((u) => pile.some((c) => c.uid === u));
+    if (valid.length !== pc.pick) return `Choose exactly ${pc.pick} card${pc.pick > 1 ? "s" : ""}.`;
+    const { kind, effSource, remaining, targets, def, instUid, replayTimes } = pc;
+    this.pendingChoice = null;
+    this.performChoice(kind, effSource, valid, replayTimes);
+    // Continue the rest of the played card's effects (which may pause again).
+    const paused = this.applyEffectList(remaining, effSource, targets, def, instUid);
+    if (paused) return null;
+    this.finishPlay(effSource, def);
+    return null;
+  }
+
   // ----------------------------------------------------------------- effects
 
   private applyEffect(
@@ -539,7 +806,12 @@ export class GameEngine {
           rampageBonus = this.rampageStacks.get(instUid) ?? 0;
           this.rampageStacks.set(instUid, rampageBonus + eff.rampage);
         }
-        const base = eff.amount + strikeBonus + rampageBonus;
+        // Crescent Spear: +N damage per Star Energy card in hand.
+        const starCardBonus = eff.perStarCard ? eff.perStarCard * this.countStarCards(source) : 0;
+        // Vigor: a one-shot bonus to the next Attack, consumed when it's played.
+        const vigor = source.powers.get("vigor") ?? 0;
+        if (vigor > 0) source.powers.delete("vigor");
+        const base = eff.amount + strikeBonus + rampageBonus + starCardBonus + vigor;
         for (const tid of targets) {
           const tgt = this.players.get(tid);
           if (!tgt) continue;
@@ -639,6 +911,7 @@ export class GameEngine {
         break;
       case "loseHp": {
         source.hp = Math.max(0, source.hp - eff.amount);
+        if (eff.amount > 0) source.hpLossCount++;
         // Rupture: losing HP from a card grants Strength.
         const rupture = source.powers.get("rupture") ?? 0;
         if (rupture > 0 && eff.amount > 0) {
@@ -654,6 +927,123 @@ export class GameEngine {
           else if (eff.pile === "draw") source.draw.push(c);
           else source.discard.push(c);
         }
+        if (eff.amount > 0) this.onCardCreated(source, eff.amount);
+        break;
+      }
+      case "gainStars":
+        this.gainStars(source, eff.amount);
+        break;
+      case "forge": {
+        const otherAttacks = Math.max(0, source.attacksThisTurn - 1);
+        const amount = eff.amount + (eff.perOtherAttackThisTurn ?? 0) * otherAttacks;
+        this.forge(source, amount);
+        this.pushLog(`✦ ${source.name} forges ${amount} (Sovereign Blade: ${source.forge}).`);
+        break;
+      }
+      case "sovereignBladeDamage": {
+        // The Sovereign Blade strikes for the caster's accumulated Forge.
+        const vigor = source.powers.get("vigor") ?? 0;
+        if (vigor > 0) source.powers.delete("vigor");
+        for (const tid of targets) {
+          const tgt = this.players.get(tid);
+          if (!tgt) continue;
+          this.pending.push({
+            uid: uid("atk"),
+            sourceId: source.id,
+            targetId: tid,
+            cardName: def.name,
+            perHit: this.computeDamage(source.forge + vigor, source, tgt, true),
+            times: 1,
+          });
+        }
+        break;
+      }
+      case "doubleForge": {
+        // Conqueror: double the Sovereign Blade's damage.
+        source.forge *= 2;
+        this.grantSovereignBlade(source);
+        this.pushLog(`✦ ${source.name}'s Forge doubles to ${source.forge}.`);
+        break;
+      }
+      case "transformHand": {
+        // BEGONE!!: transform random cards in hand into copies of `into`.
+        let made = 0;
+        for (let i = 0; i < eff.amount && source.hand.length > 0; i++) {
+          const idx = Math.floor(this.rng() * source.hand.length);
+          source.hand.splice(idx, 1);
+          source.hand.push({ uid: uid("c"), id: eff.into, upgraded: false });
+          made++;
+        }
+        if (made > 0) {
+          this.onCardCreated(source, made);
+          const into = resolveCard(eff.into, false)?.name ?? eff.into;
+          this.pushLog(`✦ ${source.name} transforms ${made} card${made > 1 ? "s" : ""} into ${into}.`);
+        }
+        break;
+      }
+      case "transformDraw": {
+        // CHARGE!!!: transform random cards in the draw pile into copies of `into`.
+        let made = 0;
+        for (let i = 0; i < eff.amount && source.draw.length > 0; i++) {
+          const idx = Math.floor(this.rng() * source.draw.length);
+          source.draw.splice(idx, 1);
+          source.draw.push({ uid: uid("c"), id: eff.into, upgraded: false });
+          made++;
+        }
+        if (made > 0) {
+          this.onCardCreated(source, made);
+          const into = resolveCard(eff.into, false)?.name ?? eff.into;
+          this.pushLog(`✦ ${source.name} transforms ${made} draw-pile card${made > 1 ? "s" : ""} into ${into}.`);
+        }
+        break;
+      }
+      case "addRandomCards": {
+        // Bundle of Joy: add random Colorless cards to hand.
+        const pool = cardsForCharacter(eff.character);
+        if (pool.length === 0) break;
+        let made = 0;
+        for (let i = 0; i < eff.amount; i++) {
+          const pick = pool[Math.floor(this.rng() * pool.length)];
+          const c: CardInstance = { uid: uid("c"), id: pick.id, upgraded: false };
+          if (eff.pile === "hand") source.hand.push(c);
+          else if (eff.pile === "draw") source.draw.push(c);
+          else source.discard.push(c);
+          made++;
+        }
+        if (made > 0) {
+          this.onCardCreated(source, made);
+          this.pushLog(`✦ ${source.name} adds ${made} random card${made > 1 ? "s" : ""} to ${eff.pile}.`);
+        }
+        break;
+      }
+      case "fillHandWith": {
+        // Crash Landing: fill the hand with copies of a card (e.g. Debris).
+        const name = resolveCard(eff.cardId, false)?.name ?? eff.cardId;
+        let made = 0;
+        while (source.hand.length < HAND_SIZE) {
+          source.hand.push({ uid: uid("c"), id: eff.cardId, upgraded: false });
+          made++;
+        }
+        if (made > 0) {
+          this.onCardCreated(source, made);
+          this.pushLog(`✦ ${source.name}'s hand fills with ${made} ${name}.`);
+        }
+        break;
+      }
+      case "nextTurnBonus": {
+        // Convergence: queue resources for next turn and optionally retain hand.
+        if (eff.energy) source.nextTurnEnergy += eff.energy;
+        if (eff.stars) source.nextTurnStars += eff.stars;
+        if (eff.retainHand) source.retainHandOnce = true;
+        const bits = [
+          eff.energy ? `${eff.energy} Energy` : "",
+          eff.stars ? `${eff.stars} Star Energy` : "",
+        ].filter(Boolean);
+        this.pushLog(
+          `✦ ${source.name} channels Convergence${bits.length ? ` (next turn: ${bits.join(", ")})` : ""}${
+            eff.retainHand ? "; retains hand" : ""
+          }.`,
+        );
         break;
       }
       case "exhaustRandom": {
@@ -717,6 +1107,21 @@ export class GameEngine {
         if (hit) for (const sub of eff.then) this.applyEffect(sub, source, targets, def, instUid);
         break;
       }
+      case "ifIncomingAttack": {
+        // Spot Weakness (PvP stand-in): run the rider only if an opponent has
+        // already queued an attack on you this turn.
+        const incoming = this.pending.some((a) => a.targetId === source.id);
+        if (incoming) for (const sub of eff.then) this.applyEffect(sub, source, targets, def, instUid);
+        break;
+      }
+      case "putDiscardOnDraw":
+      case "putHandOnDraw":
+      case "exhaustChosen":
+      case "replayChosenSkill":
+        // Interactive choices are intercepted by applyEffectList before reaching
+        // here. (Only reached if nested in onExhaust/ifTargetHasPower, which our
+        // cards avoid; treated as a no-op rather than pausing in those contexts.)
+        break;
       case "unimplemented":
         reportMissing("effect", def.id, eff.note);
         break;
@@ -756,6 +1161,7 @@ export class GameEngine {
     }
     if (remaining > 0) {
       tgt.hp = Math.max(0, tgt.hp - remaining);
+      tgt.hpLossCount++; // Blood for Blood: cheaper for each HP-loss this combat.
       // Plated Armor loses a stack each time you take unblocked attack damage.
       const plated = tgt.powers.get("plated_armor") ?? 0;
       if (plated > 0) {
@@ -783,6 +1189,97 @@ export class GameEngine {
     p.blockedThisTurn = true;
     this.blockEvents.push({ playerId: p.id, playerName: p.name, cardName, amount: amt });
     return amt;
+  }
+
+  // ----------------------------------------------------------------- Regent
+
+  /** Gain Star Energy. Fires Star-reactive powers (e.g. Black Hole). */
+  private gainStars(p: InternalPlayer, amount: number): void {
+    if (amount <= 0) return;
+    p.stars += amount;
+    p.usesStars = true;
+    this.starReactive(p, amount);
+  }
+
+  /** Spend Star Energy (already validated affordable). Fires Star-reactive powers. */
+  private spendStars(p: InternalPlayer, amount: number): void {
+    if (amount <= 0) return;
+    p.stars = Math.max(0, p.stars - amount);
+    // Child of the Stars: gain Block for each Star spent.
+    const child = p.powers.get("child_of_the_stars") ?? 0;
+    if (child > 0) this.gainBlock(p, child * amount, "Child of the Stars");
+    this.starReactive(p, amount);
+  }
+
+  // Black Hole: deal damage to all enemies whenever Star Energy is spent or gained.
+  private starReactive(p: InternalPlayer, _amount: number): void {
+    const bh = p.powers.get("black_hole") ?? 0;
+    if (bh <= 0) return;
+    for (const eid of this.aliveEnemies(p.id)) {
+      const tgt = this.players.get(eid)!;
+      this.pending.push({
+        uid: uid("atk"),
+        sourceId: p.id,
+        targetId: eid,
+        cardName: "Black Hole",
+        perHit: this.computeDamage(bh, p, tgt, false),
+        times: 1,
+      });
+    }
+  }
+
+  // Bombardment: cards with `autoPlayFromExhaust` re-fire from the Exhaust pile at
+  // the start of each of the owner's turns. Attacks pick a random living enemy.
+  private autoPlayFromExhaust(p: InternalPlayer): void {
+    for (const c of p.exhaust) {
+      const d = resolveCard(c.id, c.upgraded);
+      if (!d?.autoPlayFromExhaust) continue;
+      let targets: string[] = [];
+      if (d.target === "enemy") {
+        const enemies = this.aliveEnemies(p.id);
+        if (enemies.length === 0) continue;
+        targets = [enemies[Math.floor(this.rng() * enemies.length)]];
+      } else if (d.target === "all_enemies") {
+        targets = this.aliveEnemies(p.id);
+        if (targets.length === 0) continue;
+      } else if (d.target === "self") {
+        targets = [p.id];
+      }
+      this.pushLog(`✦ ${p.name}'s ${d.name} auto-fires from Exhaust.`);
+      for (const e of d.effects) this.applyEffect(e, p, targets, d, c.uid);
+    }
+  }
+
+  /** Forge: grow the Sovereign Blade's damage, granting the Blade on first use. */
+  private forge(p: InternalPlayer, amount: number): void {
+    if (amount <= 0) return;
+    p.forge += amount;
+    this.grantSovereignBlade(p);
+  }
+
+  // Ensure the player has a Sovereign Blade somewhere in their piles (added to
+  // hand the first time they Forge this combat).
+  private grantSovereignBlade(p: InternalPlayer): void {
+    const piles = [p.hand, p.draw, p.discard, p.exhaust];
+    const has = piles.some((pile) => pile.some((c) => c.id === "sovereign_blade"));
+    if (has) return;
+    p.hand.push({ uid: uid("c"), id: "sovereign_blade", upgraded: false });
+    this.onCardCreated(p, 1);
+    this.pushLog(`✦ ${p.name} forges the Sovereign Blade.`);
+  }
+
+  // Arsenal: gain Strength whenever you create a card.
+  private onCardCreated(p: InternalPlayer, count: number): void {
+    const arsenal = p.powers.get("arsenal") ?? 0;
+    if (arsenal > 0 && count > 0) {
+      p.powers.set("strength", (p.powers.get("strength") ?? 0) + arsenal * count);
+      this.pushLog(`✦ ${p.name} gains ${arsenal * count} Strength (Arsenal).`);
+    }
+  }
+
+  // How many "Star Energy cards" (cards with a Star cost) are in this hand.
+  private countStarCards(p: InternalPlayer): number {
+    return p.hand.filter((c) => (resolveCard(c.id, c.upgraded)?.starCost ?? 0) > 0).length;
   }
 
   // Flex-style temporary Strength: remove the tracked amount, then clear it. The
@@ -865,7 +1362,9 @@ export class GameEngine {
       const def = resolveCard(c.id, c.upgraded);
       if (!def || def.unplayable || def.cost === -2) continue;
       if (!isCardSupported(def) || this.playRestriction(p, def)) continue;
-      const cost = def.cost === "X" ? 0 : def.cost;
+      const eff = this.effectiveCost(p, def);
+      const cost = eff === "X" ? 0 : eff;
+      if ((def.starCost ?? 0) > p.stars) continue; // can't afford the Star cost
       if (cost <= p.energy) {
         // Needs a target? If an enemy card and no living enemy, it's not legal.
         if (def.target === "enemy" || def.target === "all_enemies") {
@@ -1003,6 +1502,24 @@ export class GameEngine {
         waitingOn: aliveIds.filter((id) => !this.resolutionAcks.has(id)).map((id) => this.name(id)),
       };
     }
+    // Show the card-selection prompt only to the player who must make it.
+    let pendingChoice: PendingChoiceView | null = null;
+    if (this.pendingChoice && this.pendingChoice.playerId === viewerId) {
+      const pc = this.pendingChoice;
+      // replaySkill offers only the eligible skills, not the whole hand.
+      const pile =
+        pc.kind === "replaySkill"
+          ? this.replayableSkills(pc.effSource)
+          : pc.source === "discard"
+            ? pc.effSource.discard
+            : pc.effSource.hand;
+      pendingChoice = {
+        prompt: pc.prompt,
+        source: pc.source,
+        pick: pc.pick,
+        cards: pile.map((c) => this.cardView(c, pc.effSource, false)),
+      };
+    }
     return {
       matchId: this.matchId,
       phase: this.phase,
@@ -1013,6 +1530,7 @@ export class GameEngine {
       players,
       pendingAttacks,
       resolution,
+      pendingChoice,
       winnerId: this.winnerId,
       log: this.log.slice(-40),
       lastPlay: this.lastPlay
@@ -1051,6 +1569,9 @@ export class GameEngine {
       isBlocking: p.block > 0 || p.blockedThisTurn,
       energy: isSelf ? p.energy : null,
       maxEnergy: p.maxEnergy,
+      stars: isSelf ? p.stars : null,
+      forge: p.forge,
+      usesStars: p.usesStars,
       powers,
       handCount: p.hand.length,
       drawCount: p.draw.length,
@@ -1111,28 +1632,32 @@ export class GameEngine {
         upgraded: c.upgraded,
       };
     }
-    const cost = def.cost === "X" ? owner.energy : def.cost;
+    const effCost = this.effectiveCost(owner, def);
+    const cost = effCost === "X" ? owner.energy : effCost;
     const playable =
       inHand &&
       this.phase === "action" &&
       this.priorityId === owner.id &&
+      !this.pendingChoice &&
       !def.unplayable &&
       def.cost !== -2 &&
       isCardSupported(def) &&
       !this.playRestriction(owner, def) &&
       typeof cost === "number" &&
       cost <= owner.energy &&
+      (def.starCost ?? 0) <= owner.stars &&
       !((def.target === "enemy" || def.target === "all_enemies") && this.aliveEnemies(owner.id).length === 0);
     return {
       uid: c.uid,
       id: c.id,
       name: def.name,
       type: def.type,
-      cost: def.cost,
+      cost: effCost,
       target: def.target,
       description: describeCard(def),
       playable,
       upgraded: c.upgraded,
+      starCost: def.starCost,
     };
   }
 }
@@ -1207,12 +1732,73 @@ export function describeCard(def: CardDef): string {
         parts.push(`If target has ${getPower(e.power).name}: ${inner.replace(/\.$/, "")}`);
         break;
       }
+      case "ifIncomingAttack": {
+        const inner = e.then.map((sub) => describeCard({ effects: [sub] } as CardDef)).join(" ");
+        parts.push(`If an opponent is attacking you this turn: ${inner.replace(/\.$/, "")}`);
+        break;
+      }
+      case "putDiscardOnDraw":
+        parts.push(`Put ${e.amount} card${e.amount > 1 ? "s" : ""} from your discard pile on top of your draw pile`);
+        break;
+      case "putHandOnDraw":
+        parts.push(`Put ${e.amount} card${e.amount > 1 ? "s" : ""} from your hand on top of your draw pile`);
+        break;
+      case "exhaustChosen":
+        parts.push(`Exhaust ${e.amount} chosen card${e.amount > 1 ? "s" : ""} from your hand`);
+        break;
+      case "gainStars":
+        parts.push(`Gain ${e.amount} Star Energy`);
+        break;
+      case "forge":
+        parts.push(
+          e.perOtherAttackThisTurn
+            ? `Forge ${e.amount}, +${e.perOtherAttackThisTurn} for each other Attack played this turn`
+            : `Forge ${e.amount}`,
+        );
+        break;
+      case "sovereignBladeDamage":
+        parts.push("Deal damage equal to your Forge");
+        break;
+      case "doubleForge":
+        parts.push("Double your Forge");
+        break;
+      case "transformHand": {
+        const into = resolveCard(e.into, false)?.name ?? e.into;
+        parts.push(`Transform ${e.amount} random card${e.amount > 1 ? "s" : ""} in your hand into ${into}`);
+        break;
+      }
+      case "transformDraw": {
+        const into = resolveCard(e.into, false)?.name ?? e.into;
+        parts.push(`Transform ${e.amount} random card${e.amount > 1 ? "s" : ""} in your draw pile into ${into}`);
+        break;
+      }
+      case "addRandomCards": {
+        const pool = e.character === "neutral" ? "Colorless" : e.character;
+        parts.push(`Add ${e.amount} random ${pool} card${e.amount > 1 ? "s" : ""} to your ${e.pile}`);
+        break;
+      }
+      case "fillHandWith": {
+        const name = resolveCard(e.cardId, false)?.name ?? e.cardId;
+        parts.push(`Fill your hand with ${name}`);
+        break;
+      }
+      case "nextTurnBonus": {
+        const bits = [e.energy ? `${e.energy} Energy` : "", e.stars ? `${e.stars} Star Energy` : ""].filter(Boolean);
+        const lead = bits.length ? `Next turn, gain ${bits.join(" and ")}` : "";
+        const retain = e.retainHand ? `${lead ? ". " : ""}Retain your hand` : "";
+        parts.push(`${lead}${retain}`);
+        break;
+      }
+      case "replayChosenSkill":
+        parts.push(`Choose a Skill in your hand and play it ${e.times} times`);
+        break;
       case "unimplemented":
         parts.push("(unimplemented)");
         break;
     }
   }
   let text = parts.join(". ");
+  if (def.dynamicCost === "hp_loss") text += ". Costs 1 less for each time you've lost HP this combat";
   if (def.requires === "all_attacks_in_hand") text += ". Play only if all cards in hand are Attacks";
   text += def.exhaust ? ". Exhaust." : ".";
   if (def.onExhaust && def.onExhaust.length) {
@@ -1220,5 +1806,7 @@ export function describeCard(def: CardDef): string {
     text += ` When Exhausted: ${inner}.`;
   }
   if (def.ethereal) text += " Ethereal.";
+  if (def.starCost) text += ` Costs ${def.starCost} Star Energy.`;
+  if (def.retain) text += " Retain.";
   return text;
 }

@@ -173,6 +173,15 @@ function handle(ws: WebSocket, msg: ClientMessage): void {
       match!.broadcast();
       break;
     }
+    case "chooseCards": {
+      const match = c.matchId ? manager.get(c.matchId) : undefined;
+      const engine = match?.getEngine();
+      if (!engine) return send(ws, { t: "error", message: "Match not running." });
+      const err = engine.resolveChoice(c.playerId, msg.uids);
+      if (err) send(ws, { t: "error", message: err });
+      match!.broadcast();
+      break;
+    }
     case "pass": {
       const match = c.matchId ? manager.get(c.matchId) : undefined;
       const engine = match?.getEngine();

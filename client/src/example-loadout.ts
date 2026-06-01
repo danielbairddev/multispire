@@ -22,3 +22,29 @@ export const EXAMPLE_LOADOUT: Loadout = {
     "body_slam",
   ],
 };
+
+// A ready-to-play Regent build showing off Star Energy and the Forge / Sovereign
+// Blade engine. Bring Divine Right for the 3 opening Stars.
+export const EXAMPLE_LOADOUT_REGENT: Loadout = {
+  name: "Regent",
+  character: "regent",
+  maxHp: 75,
+  relics: ["divine_right"],
+  deck: [
+    { id: "strike_reg", count: 4 },
+    { id: "defend_reg", count: 3 },
+    "falling_star",
+    { id: "venerate", count: 2 },
+    "cloak_of_stars",
+    "crescent_spear",
+    "celestial_might",
+    "astral_pulse",
+    "crush_under",
+    "cosmic_indifference",
+    "bulwark",
+    "conqueror",
+    "furnace",
+    { id: "child_of_the_stars", upgraded: true },
+    "arsenal",
+  ],
+};

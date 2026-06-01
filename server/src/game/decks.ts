@@ -17,6 +17,41 @@ export function ironcladStarterDeck(): DeckList {
   ];
 }
 
+// The Regent's starting deck (mirrors Slay the Spire 2): 4 Strike, 4 Defend,
+// one Falling Star, one Venerate. Pair with the Divine Right relic for the 3
+// opening Star Energy.
+export function regentStarterDeck(): DeckList {
+  return [
+    ...Array.from({ length: 4 }, () => ({ id: "strike_reg" })),
+    ...Array.from({ length: 4 }, () => ({ id: "defend_reg" })),
+    { id: "falling_star" },
+    { id: "venerate" },
+  ];
+}
+
+// A rounded ~20-card Regent demo build: starter core plus Star-spenders, a Forge
+// engine, and a couple of scaling powers so a quick match has an arc.
+export function regentDemoDeck(): DeckList {
+  return [
+    ...Array.from({ length: 4 }, () => ({ id: "strike_reg" })),
+    ...Array.from({ length: 3 }, () => ({ id: "defend_reg" })),
+    { id: "falling_star" },
+    { id: "venerate" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+    { id: "crescent_spear" },
+    { id: "celestial_might" },
+    { id: "astral_pulse" },
+    { id: "crush_under" },
+    { id: "cosmic_indifference" },
+    { id: "bulwark" },
+    { id: "conqueror" },
+    { id: "furnace" },
+    { id: "child_of_the_stars", upgraded: true },
+    { id: "arsenal" },
+  ];
+}
+
 // The default deck everyone gets if they press Play without importing a loadout.
 // A rounded ~20-card Ironclad build: reliable damage, enough block to survive a
 // few turns, a couple of debuff/scaling options, and one power so games have an

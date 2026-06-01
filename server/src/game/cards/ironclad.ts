@@ -245,11 +245,16 @@ export const IRONCLAD_CARDS: CardDef[] = [
     rarity: "common",
     cost: 1,
     target: "enemy",
-    // Not supported: the "put a card from your discard on top of your draw" rider
-    // needs a pile-selection UI we don't have yet.
-    approx: true,
-    effects: [{ kind: "damage", amount: 9 }],
-    upgrade: { effects: [{ kind: "damage", amount: 12 }] },
+    effects: [
+      { kind: "damage", amount: 9 },
+      { kind: "putDiscardOnDraw", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 12 },
+        { kind: "putDiscardOnDraw", amount: 1 },
+      ],
+    },
   },
   {
     id: "heavy_blade",
@@ -332,12 +337,17 @@ export const IRONCLAD_CARDS: CardDef[] = [
     rarity: "common",
     cost: 0,
     target: "self",
-    // Not supported: choosing a card from hand to put onto your draw pile needs a
-    // selection UI we don't have yet.
-    approx: true,
     exhaust: true,
-    effects: [{ kind: "draw", amount: 1 }],
-    upgrade: { effects: [{ kind: "draw", amount: 2 }] },
+    effects: [
+      { kind: "draw", amount: 1 },
+      { kind: "putHandOnDraw", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "draw", amount: 2 },
+        { kind: "putHandOnDraw", amount: 1 },
+      ],
+    },
   },
   {
     id: "wild_strike",
@@ -387,9 +397,7 @@ export const IRONCLAD_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 4,
     target: "enemy",
-    // Not supported: the "costs 1 less for each time you've lost HP this combat"
-    // discount needs per-combat HP-loss tracking and a dynamic cost.
-    approx: true,
+    dynamicCost: "hp_loss",
     effects: [{ kind: "damage", amount: 18 }],
     upgrade: { cost: 3, effects: [{ kind: "damage", amount: 22 }] },
   },
@@ -420,10 +428,16 @@ export const IRONCLAD_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "self",
-    // Not supported: choosing a card from hand to exhaust needs a selection UI.
-    approx: true,
-    effects: [{ kind: "draw", amount: 2 }],
-    upgrade: { effects: [{ kind: "draw", amount: 3 }] },
+    effects: [
+      { kind: "exhaustChosen", amount: 1 },
+      { kind: "draw", amount: 2 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "exhaustChosen", amount: 1 },
+        { kind: "draw", amount: 3 },
+      ],
+    },
   },
   {
     id: "carnage",
@@ -609,11 +623,9 @@ export const IRONCLAD_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "enemy",
-    // Not supported: the "+5 damage each time this is played this combat" scaling
-    // needs a per-card-instance combat counter.
-    approx: true,
-    effects: [{ kind: "damage", amount: 8 }],
-    upgrade: { effects: [{ kind: "damage", amount: 8 }] },
+    // +5 damage every time this card is played this combat (per-instance counter).
+    effects: [{ kind: "damage", amount: 8, rampage: 5 }],
+    upgrade: { effects: [{ kind: "damage", amount: 8, rampage: 8 }] },
   },
   {
     id: "reckless_charge",
@@ -666,11 +678,13 @@ export const IRONCLAD_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "self",
-    // Not supported: the "if this is Exhausted, gain 2 Energy" trigger needs an
-    // on-exhaust hook we don't model.
-    approx: true,
+    // If this card is Exhausted (by another effect), gain Energy.
     effects: [{ kind: "block", amount: 5 }],
-    upgrade: { effects: [{ kind: "block", amount: 8 }] },
+    onExhaust: [{ kind: "gainEnergy", amount: 2 }],
+    upgrade: {
+      effects: [{ kind: "block", amount: 8 }],
+      onExhaust: [{ kind: "gainEnergy", amount: 3 }],
+    },
   },
   {
     id: "sever_soul",
@@ -719,11 +733,12 @@ export const IRONCLAD_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "self",
-    // Not supported: "if the enemy intends to attack" depends on declared intent,
-    // which this simultaneous-priority duel doesn't expose.
-    approx: true,
-    effects: [{ kind: "applyPower", power: "strength", amount: 3, to: "self" }],
-    upgrade: { effects: [{ kind: "applyPower", power: "strength", amount: 4, to: "self" }] },
+    // PvP stand-in for "if the enemy intends to attack": gain Strength only if an
+    // opponent has already queued an attack on you this turn.
+    effects: [{ kind: "ifIncomingAttack", then: [{ kind: "applyPower", power: "strength", amount: 3, to: "self" }] }],
+    upgrade: {
+      effects: [{ kind: "ifIncomingAttack", then: [{ kind: "applyPower", power: "strength", amount: 4, to: "self" }] }],
+    },
   },
   {
     id: "uppercut",
@@ -747,7 +762,95 @@ export const IRONCLAD_CARDS: CardDef[] = [
     },
   },
 
+  {
+    id: "second_wind",
+    name: "Second Wind",
+    character: "ironclad",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "exhaustNonAttacks", blockPerCard: 5 }],
+    upgrade: { effects: [{ kind: "exhaustNonAttacks", blockPerCard: 7 }] },
+  },
+  {
+    id: "feel_no_pain",
+    name: "Feel No Pain",
+    character: "ironclad",
+    type: "power",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "applyPower", power: "feel_no_pain", amount: 3, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "feel_no_pain", amount: 4, to: "self" }] },
+  },
+  {
+    id: "dark_embrace",
+    name: "Dark Embrace",
+    character: "ironclad",
+    type: "power",
+    rarity: "uncommon",
+    cost: 2,
+    target: "self",
+    effects: [{ kind: "applyPower", power: "dark_embrace", amount: 1, to: "self" }],
+    upgrade: { cost: 1, effects: [{ kind: "applyPower", power: "dark_embrace", amount: 1, to: "self" }] },
+  },
+  {
+    id: "berserk",
+    name: "Berserk",
+    character: "ironclad",
+    type: "power",
+    rarity: "uncommon",
+    cost: 0,
+    target: "self",
+    effects: [
+      { kind: "applyPower", power: "vulnerable", amount: 2, to: "self" },
+      { kind: "applyPower", power: "berserk", amount: 1, to: "self" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "applyPower", power: "vulnerable", amount: 1, to: "self" },
+        { kind: "applyPower", power: "berserk", amount: 1, to: "self" },
+      ],
+    },
+  },
+  {
+    id: "rupture",
+    name: "Rupture",
+    character: "ironclad",
+    type: "power",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "applyPower", power: "rupture", amount: 1, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "rupture", amount: 2, to: "self" }] },
+  },
+
   // ---- Rares ----
+  {
+    id: "brutality",
+    name: "Brutality",
+    character: "ironclad",
+    type: "power",
+    rarity: "rare",
+    cost: 0,
+    target: "self",
+    // Upgrade in StS adds Innate (draw at combat start), which we don't model, so
+    // this is left non-upgradable rather than faked.
+    effects: [{ kind: "applyPower", power: "brutality", amount: 1, to: "self" }],
+  },
+  {
+    id: "fiend_fire",
+    name: "Fiend Fire",
+    character: "ironclad",
+    type: "attack",
+    rarity: "rare",
+    cost: 2,
+    target: "enemy",
+    exhaust: true,
+    effects: [{ kind: "exhaustHandForDamage", perCard: 7 }],
+    upgrade: { effects: [{ kind: "exhaustHandForDamage", perCard: 10 }] },
+  },
   {
     id: "barricade",
     name: "Barricade",

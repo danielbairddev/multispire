@@ -6,12 +6,13 @@ import type {
   LobbyView,
   MatchMode,
   OpenMatchView,
+  PendingChoiceView,
   PlayerView,
   RelicCatalogEntry,
   ServerMessage,
 } from "@multispire/shared";
 import { Net } from "./net.js";
-import { EXAMPLE_LOADOUT } from "./example-loadout.js";
+import { EXAMPLE_LOADOUT, EXAMPLE_LOADOUT_REGENT } from "./example-loadout.js";
 
 // A working entry in the deckbuilder: a card id + modifier, with a copy count.
 interface BuilderEntry {
@@ -28,6 +29,7 @@ interface BuilderState {
   maxHp: string;
   relics: string[];
   query: string;
+  relicQuery: string;
   entries: BuilderEntry[];
 }
 
@@ -47,6 +49,8 @@ interface UIState {
   showDeck: boolean;
   // Id of the player whose static build (deck/relics/HP) is being inspected.
   buildOf: string | null;
+  // Cards currently selected in an open card-selection prompt (multi-pick).
+  choiceSel: string[];
   // Card catalog (fetched once) and the in-progress deckbuilder state.
   catalog: CardCatalogEntry[] | null;
   relicCatalog: RelicCatalogEntry[] | null;
@@ -55,10 +59,73 @@ interface UIState {
   deckDraft: Loadout | null;
   // Open games advertised on the homepage (polled while on the join screen).
   openMatches: OpenMatchView[];
+  // Decklists the player has used before, remembered across sessions.
+  savedDecks: Loadout[];
 }
 
 function emptyBuilder(): BuilderState {
-  return { name: "", maxHp: "", relics: [], query: "", entries: [] };
+  return { name: "", maxHp: "", relics: [], query: "", relicQuery: "", entries: [] };
+}
+
+// --- persistence: remember the player's name and previously-used decklists ---
+const NAME_KEY = "ms_name";
+const DECKS_KEY = "ms_decks";
+const MAX_SAVED_DECKS = 12;
+
+function loadSavedName(): string {
+  try {
+    return localStorage.getItem(NAME_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function saveName(name: string): void {
+  try {
+    if (name.trim()) localStorage.setItem(NAME_KEY, name.trim());
+  } catch {
+    /* storage unavailable — non-fatal */
+  }
+}
+
+function loadSavedDecks(): Loadout[] {
+  try {
+    const raw = localStorage.getItem(DECKS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? (list as Loadout[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSavedDecks(): void {
+  try {
+    localStorage.setItem(DECKS_KEY, JSON.stringify(ui.savedDecks.slice(0, MAX_SAVED_DECKS)));
+  } catch {
+    /* storage unavailable — non-fatal */
+  }
+}
+
+// Remember a decklist the player just used. Newest first; de-duplicated by name
+// (or exact contents when unnamed) so repeated joins don't pile up copies.
+function rememberDeck(l: Loadout): void {
+  if (!l.deck || !l.deck.length) return;
+  const key = (d: Loadout) => (d.name?.trim() ? `n:${d.name.trim().toLowerCase()}` : `j:${JSON.stringify(d.deck)}`);
+  const k = key(l);
+  ui.savedDecks = [l, ...ui.savedDecks.filter((d) => key(d) !== k)].slice(0, MAX_SAVED_DECKS);
+  persistSavedDecks();
+}
+
+function deleteSavedDeck(idx: number): void {
+  ui.savedDecks.splice(idx, 1);
+  persistSavedDecks();
+  render();
+}
+
+function useSavedDeck(l: Loadout): void {
+  ui.deckDraft = l;
+  ui.loadoutText = "";
+  render();
 }
 
 const ui: UIState = {
@@ -73,11 +140,13 @@ const ui: UIState = {
   loadoutText: "",
   showDeck: false,
   buildOf: null,
+  choiceSel: [],
   catalog: null,
   relicCatalog: null,
   builder: emptyBuilder(),
   deckDraft: null,
   openMatches: [],
+  savedDecks: loadSavedDecks(),
 };
 
 net.connect();
@@ -219,6 +288,7 @@ async function openDeckbuilder(): Promise<void> {
       maxHp: ui.deckDraft.maxHp != null ? String(ui.deckDraft.maxHp) : "",
       relics: [...(ui.deckDraft.relics ?? [])],
       query: "",
+      relicQuery: "",
       entries: (ui.deckDraft.deck ?? []).map((d) =>
         typeof d === "string"
           ? { id: d, upgraded: false, count: 1 }
@@ -324,8 +394,10 @@ function downloadDeckJson(): void {
 }
 
 function useBuiltDeck(): void {
-  ui.deckDraft = builderToLoadout();
+  const loadout = builderToLoadout();
+  ui.deckDraft = loadout;
   ui.loadoutText = ""; // the draft takes precedence over any pasted JSON
+  rememberDeck(loadout); // keep it in the saved-decks list for next time
   ui.screen = "join";
   render();
 }
@@ -367,6 +439,31 @@ function pass(): void {
 
 function ackResolution(): void {
   net.send({ t: "ackResolution" });
+}
+
+// --- card-selection prompts (Headbutt / Warcry / Burning Pact) ---
+// pick === 1: a click sends immediately. pick > 1: toggle a selection, then the
+// player confirms once exactly `pick` cards are chosen.
+function clickChoiceCard(uid: string, pick: number): void {
+  if (pick <= 1) {
+    ui.choiceSel = [];
+    net.send({ t: "chooseCards", uids: [uid] });
+    return;
+  }
+  const sel = ui.choiceSel;
+  const i = sel.indexOf(uid);
+  if (i !== -1) sel.splice(i, 1);
+  else if (sel.length < pick) sel.push(uid);
+  render();
+}
+
+function confirmChoice(): void {
+  const g = ui.game;
+  if (!g?.pendingChoice) return;
+  if (ui.choiceSel.length !== g.pendingChoice.pick) return;
+  const uids = ui.choiceSel.slice();
+  ui.choiceSel = [];
+  net.send({ t: "chooseCards", uids });
 }
 
 // Leave the finished match and return to the main menu. Reconnects with a fresh
@@ -435,7 +532,7 @@ function renderJoin(): void {
       <h1>Multispire</h1>
       <p class="muted">Multiplayer deck battler</p>
       <div class="card-panel">
-        <label>Name <input id="name" value="Player" /></label>
+        <label>Name <input id="name" value="${escape(loadSavedName() || "Player")}" /></label>
         <label>Match code <input id="match" placeholder="(blank = create new)" /></label>
         <label>Mode
           <select id="mode">
@@ -466,11 +563,21 @@ function renderJoin(): void {
           }
         </div>
 
+        ${
+          ui.savedDecks.length
+            ? `<div class="saveddecks">
+                 <div class="saveddecks-head"><span>Saved decks</span></div>
+                 <div id="savedList" class="savedlist"></div>
+               </div>`
+            : ""
+        }
+
         <details class="import" ${ui.loadoutText ? "open" : ""}>
           <summary>Import deck / loadout (paste JSON)</summary>
           <p class="muted small">Paste loadout JSON, or load a file. Leave blank to use the default Ironclad deck (or build one above).</p>
           <div class="import-actions">
-            <button id="example" type="button">Load example</button>
+            <button id="example" type="button">Load Ironclad example</button>
+            <button id="exampleRegent" type="button">Load Regent example</button>
             <label class="filebtn">Load file…<input id="file" type="file" accept="application/json,.json" hidden /></label>
             <button id="clearLoad" type="button">Clear</button>
           </div>
@@ -491,6 +598,10 @@ function renderJoin(): void {
 
   wrap.querySelector("#example")!.addEventListener("click", () => {
     ui.loadoutText = JSON.stringify(EXAMPLE_LOADOUT, null, 2);
+    render();
+  });
+  wrap.querySelector("#exampleRegent")!.addEventListener("click", () => {
+    ui.loadoutText = JSON.stringify(EXAMPLE_LOADOUT_REGENT, null, 2);
     render();
   });
   wrap.querySelector("#clearLoad")!.addEventListener("click", () => {
@@ -522,6 +633,8 @@ function renderJoin(): void {
         return;
       }
     }
+    saveName(name);
+    if (loadout) rememberDeck(loadout);
     join(name, match || undefined, mode, loadout);
   });
 
@@ -537,12 +650,40 @@ function renderJoin(): void {
         /* fall through with no loadout */
       }
     }
+    saveName(name);
+    if (loadout) rememberDeck(loadout);
     join(name, matchId, mode, loadout);
   };
   renderOpenList(wrap.querySelector("#openList") as HTMLElement, joinOpen);
   wrap.querySelector("#refreshGames")!.addEventListener("click", () => void refreshOpenMatches());
 
+  const savedList = wrap.querySelector("#savedList") as HTMLElement | null;
+  if (savedList) renderSavedDecks(savedList);
+
   app.appendChild(wrap);
+}
+
+// Previously-used decklists, with quick "Use" + delete. Remembered in localStorage.
+function renderSavedDecks(container: HTMLElement): void {
+  container.innerHTML = "";
+  ui.savedDecks.forEach((d, idx) => {
+    const label = d.name?.trim() || `Deck ${idx + 1}`;
+    const cards = draftCardCount(d);
+    const relics = (d.relics ?? []).length;
+    const isActive = ui.deckDraft && JSON.stringify(ui.deckDraft) === JSON.stringify(d);
+    const row = el(`
+      <div class="savedrow ${isActive ? "active" : ""}">
+        <span class="savedname">${escape(label)}</span>
+        <span class="savedmeta">${cards} cards · ${relics} relics${d.maxHp ? ` · ${d.maxHp} HP` : ""}</span>
+        <span class="savedbtns">
+          <button class="usesaved primary" type="button">${isActive ? "✓ Selected" : "Use"}</button>
+          <button class="delsaved ghost" type="button" title="Forget this deck">✕</button>
+        </span>
+      </div>`);
+    row.querySelector(".usesaved")!.addEventListener("click", () => useSavedDeck(d));
+    row.querySelector(".delsaved")!.addEventListener("click", () => deleteSavedDeck(idx));
+    container.appendChild(row);
+  });
 }
 
 function renderOpenList(container: HTMLElement, joinOpen: (matchId: string, mode: MatchMode) => void): void {
@@ -602,6 +743,7 @@ function renderDeckbuilder(): void {
           <div class="relichead">
             <span class="reliclbl">Relics (<span id="relicCount">${b.relics.length}</span>) — click to toggle</span>
             <span class="relicadd">
+              <input id="brelicSearch" class="search" value="${escape(b.relicQuery)}" placeholder="🔎 Search relics…" />
               <input id="brelic" class="search" placeholder="custom relic id…" />
               <button id="brelicAdd" class="ghost">+ Add</button>
             </span>
@@ -661,6 +803,14 @@ function renderDeckbuilder(): void {
     }
   });
 
+  const relicSearch = wrap.querySelector("#brelicSearch") as HTMLInputElement;
+  const relicPicker = wrap.querySelector("#relicPicker") as HTMLElement;
+  // Live-filter the relic picker in place (no full render) so search keeps focus.
+  relicSearch.addEventListener("input", () => {
+    b.relicQuery = relicSearch.value;
+    renderRelicPicker(relicPicker);
+  });
+
   const search = wrap.querySelector("#bsearch") as HTMLInputElement;
   const catalogList = wrap.querySelector("#catalogList") as HTMLElement;
   // Live-filter the catalog in place (no full render) so search keeps focus.
@@ -685,7 +835,9 @@ function renderDeckbuilder(): void {
   app.appendChild(wrap);
 }
 
-// The full relic catalog as clickable toggles (selected ones are highlighted).
+// The relic catalog as clickable toggles (selected ones are highlighted).
+// A search box narrows the (now larger) pool; selected relics always stay
+// visible so you never lose a pick behind the filter.
 function renderRelicPicker(container: HTMLElement): void {
   container.innerHTML = "";
   const relics = ui.relicCatalog ?? [];
@@ -694,7 +846,15 @@ function renderRelicPicker(container: HTMLElement): void {
     return;
   }
   const selected = new Set(ui.builder.relics);
-  for (const r of relics) {
+  const q = ui.builder.relicQuery.trim().toLowerCase();
+  const matches = relics.filter(
+    (r) => selected.has(r.id) || !q || r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q),
+  );
+  if (!matches.length) {
+    container.appendChild(el(`<span class="muted small">No relics match “${escape(q)}”.</span>`));
+    return;
+  }
+  for (const r of matches) {
     const on = selected.has(r.id);
     const node = el(`
       <button class="relicopt ${on ? "on" : ""}" title="${escape(r.description)}">
@@ -832,8 +992,10 @@ function renderLobby(): void {
           ? `<button id="start" class="primary" ${lobby.players.length < 2 ? "disabled" : ""}>Start match</button>`
           : `<p class="muted">Waiting for the host to start…</p>`
       }
+      <button id="leaveLobby" class="ghost">${isHost ? "← Cancel game" : "← Leave lobby"}</button>
     </div>`);
   wrap.querySelector("#start")?.addEventListener("click", startMatch);
+  wrap.querySelector("#leaveLobby")!.addEventListener("click", backToMenu);
   app.appendChild(wrap);
 }
 
@@ -915,6 +1077,10 @@ function renderGame(): void {
   if (g.phase === "resolution" && g.resolution) {
     app.appendChild(resolutionModal(g, g.resolution));
   }
+
+  // Card-selection prompt (Headbutt / Warcry / Burning Pact). Shown only to the
+  // chooser; the engine is paused until they resolve it.
+  if (g.pendingChoice) app.appendChild(choiceModal(g.pendingChoice));
 
   // Deck viewer overlay (draw / discard / exhaust).
   if (ui.showDeck) app.appendChild(deckModal(me));
@@ -1004,6 +1170,46 @@ function deckModal(me: PlayerView): HTMLElement {
   overlay.addEventListener("click", (ev) => {
     if (ev.target === overlay) toggleDeck();
   });
+  return overlay;
+}
+
+function choiceModal(pc: PendingChoiceView): HTMLElement {
+  const multi = pc.pick > 1;
+  // Drop any stale selections (cards that are no longer eligible).
+  ui.choiceSel = ui.choiceSel.filter((u) => pc.cards.some((c) => c.uid === u));
+  const cards = pc.cards.length
+    ? pc.cards
+        .map((c) => {
+          const sel = ui.choiceSel.includes(c.uid);
+          return `<li class="deckcard choicecard type-${c.type} ${sel ? "chosen" : ""}" data-choice="${c.uid}">
+              <span class="dcost">${c.cost === "X" ? "X" : c.cost}</span>
+              <span class="dname">${escape(c.name)}${c.upgraded ? "+" : ""}</span>
+              <span class="dtext">${escape(c.description)}</span>
+            </li>`;
+        })
+        .join("")
+    : `<li class="muted">no eligible cards</li>`;
+
+  const confirmBar = multi
+    ? `<div class="choicebar">
+         <span class="muted small">Selected ${ui.choiceSel.length} / ${pc.pick}</span>
+         <button id="confirmChoice" class="primary" ${ui.choiceSel.length === pc.pick ? "" : "disabled"}>Confirm</button>
+       </div>`
+    : `<p class="muted small">Click a card to choose.</p>`;
+
+  const overlay = el(`
+    <div class="overlay">
+      <div class="modal wide">
+        <h2>${escape(pc.prompt)}</h2>
+        <ul class="decklist choicelist">${cards}</ul>
+        ${confirmBar}
+      </div>
+    </div>`);
+  overlay.querySelectorAll<HTMLElement>("[data-choice]").forEach((node) => {
+    node.addEventListener("click", () => clickChoiceCard(node.dataset.choice!, pc.pick));
+  });
+  const confirm = overlay.querySelector("#confirmChoice");
+  if (confirm) confirm.addEventListener("click", confirmChoice);
   return overlay;
 }
 
@@ -1137,6 +1343,10 @@ function avatar(g: GameView, p: PlayerView, isYou: boolean): HTMLElement {
 
   const initials = escape(p.name.slice(0, 2).toUpperCase());
   const energy = isYou ? `<div class="avenergy">⚡ ${p.energy ?? 0}/${p.maxEnergy}</div>` : "";
+  // Regent second resources: Star Energy (hidden for opponents) and Forge (public).
+  const stars = p.usesStars
+    ? `<div class="avstars">✦ ${isYou ? (p.stars ?? 0) : "?"} Stars${p.forge ? ` · ⚒️ ${p.forge}` : ""}</div>`
+    : "";
 
   const node = el(`
     <div class="avatarbox ${isYou ? "you" : "foe"} ${p.alive ? "" : "dead"}" ${isYou ? "" : `data-enemy="${p.id}"`}>
@@ -1152,6 +1362,7 @@ function avatar(g: GameView, p: PlayerView, isYou: boolean): HTMLElement {
       <div class="hpbar"><div class="hpfill" style="width:${(100 * p.hp) / p.maxHp}%"></div>
         <span>${p.hp}/${p.maxHp}</span></div>
       ${energy}
+      ${stars}
       <div class="powers">${powerBadges(p)}</div>
     </div>`);
   node.querySelector(".buildbtn")!.addEventListener("click", (ev) => {
@@ -1171,6 +1382,7 @@ function dock(me: PlayerView, yourPriority: boolean): HTMLElement {
         ui.targetingCardUid === c.uid ? "selected" : ""
       }">
         <div class="cost">${c.cost === "X" ? "X" : c.cost}</div>
+        ${c.starCost ? `<div class="starcost">✦${c.starCost}</div>` : ""}
         <div class="cname">${escape(c.name)}${c.upgraded ? "+" : ""}</div>
         <div class="ctext">${escape(c.description)}</div>
       </div>`);

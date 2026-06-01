@@ -2,9 +2,10 @@ import type { CardDef } from "@multispire/shared";
 import { reportMissing } from "../missing.js";
 import { IRONCLAD_CARDS } from "./ironclad.js";
 import { NEUTRAL_CARDS } from "./neutral.js";
+import { REGENT_CARDS } from "./regent.js";
 
 // All known cards, indexed by id. Future characters register their arrays here.
-const ALL: CardDef[] = [...IRONCLAD_CARDS, ...NEUTRAL_CARDS];
+const ALL: CardDef[] = [...IRONCLAD_CARDS, ...NEUTRAL_CARDS, ...REGENT_CARDS];
 
 /**
  * Whether cards whose real behavior is only partially modeled (`approx: true`)
@@ -49,6 +50,10 @@ const CARD_ALIASES: Record<string, string> = {
   searingblow: "searing_blow",
   seeingred: "seeing_red",
   seversoul: "sever_soul",
+  secondwind: "second_wind",
+  feelnopain: "feel_no_pain",
+  darkembrace: "dark_embrace",
+  fiendfire: "fiend_fire",
   spotweakness: "spot_weakness",
   demonform: "demon_form",
   limitbreak: "limit_break",
@@ -60,6 +65,29 @@ const CARD_ALIASES: Record<string, string> = {
   goodinstincts: "good_instincts",
   masterofstrategy: "master_of_strategy",
   swiftstrike: "swift_strike",
+  // ---- Regent ----
+  strikereg: "strike_reg",
+  defendreg: "defend_reg",
+  fallingstar: "falling_star",
+  astralpulse: "astral_pulse",
+  bigbang: "big_bang",
+  blackhole: "black_hole",
+  beatintoshape: "beat_into_shape",
+  bundleofjoy: "bundle_of_joy",
+  celestialmight: "celestial_might",
+  childofthestars: "child_of_the_stars",
+  cloakofstars: "cloak_of_stars",
+  collisioncourse: "collision_course",
+  cosmicindifference: "cosmic_indifference",
+  crashlanding: "crash_landing",
+  crescentspear: "crescent_spear",
+  crushunder: "crush_under",
+  "decisionsdecisions": "decisions_decisions",
+  sovereignblade: "sovereign_blade",
+  minionstrike: "minion_strike",
+  divebomb: "dive_bomb",
+  "begone!!": "begone",
+  "charge!!!": "charge",
 };
 
 /**
@@ -96,6 +124,21 @@ export function getCard(id: string): CardDef | null {
 
 export function allCards(): CardDef[] {
   return ALL;
+}
+
+/** Supported, deckable cards of a character/pool — used to generate random cards
+ *  (e.g. Bundle of Joy's "add 3 random Colorless cards"). Excludes tokens,
+ *  statuses, curses and unplayables so we only ever hand out real cards. */
+export function cardsForCharacter(character: CardDef["character"]): CardDef[] {
+  return ALL.filter(
+    (c) =>
+      c.character === character &&
+      !c.token &&
+      !c.unplayable &&
+      c.type !== "status" &&
+      c.type !== "curse" &&
+      isCardSupported(c),
+  );
 }
 
 /** Resolve the effective definition for an instance, applying upgrade deltas. */

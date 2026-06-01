@@ -268,14 +268,298 @@ const hpOf = (g: GameEngine, id: string) => g.viewFor("a").players.find((p) => p
   assert(hpOf(g, "a") === 200, "Reaper's lifesteal healed A back to full");
 }
 
-// --- Approximated cards are disabled: unplayable and rejected ---
+// --- Headbutt: deals damage, then pauses to put a discard card on top of draw ---
 {
-  const g = solo([{ id: "headbutt" }, { id: "strike_r" }]);
-  const card = handOf(g, "a").find((c) => c.id === "headbutt")!;
-  assert(card.playable === false, "unsupported Headbutt is shown unplayable");
-  ensure(g, "a");
-  const err = g.playCard("a", card.uid, "b");
-  assert(err === "That card isn't supported yet.", "playing an unsupported card is rejected");
+  const g = solo([{ id: "strike_r" }, { id: "strike_r" }, { id: "headbutt" }]);
+  play(g, "a", "strike_r", "b");
+  play(g, "a", "strike_r", "b"); // build up a discard pile to choose from
+  play(g, "a", "headbutt", "b");
+  const atk = g.viewFor("b").pendingAttacks.find((x) => x.targetId === "b" && x.amount === 9);
+  assert(!!atk, "Headbutt queued 9 damage");
+  const pc = g.viewFor("a").pendingChoice;
+  assert(!!pc && pc.source === "discard", "Headbutt opens a discard selection");
+  // Other actions are blocked while a selection is pending.
+  assert(g.pass("a") === "Resolve the current card selection first.", "pass blocked during a choice");
+  const strike = pc!.cards.find((c) => c.id === "strike_r")!;
+  assert(g.resolveChoice("a", [strike.uid]) === null, "resolveChoice succeeds");
+  assert(g.viewFor("a").pendingChoice == null, "choice cleared after resolving");
+  const me = g.viewFor("a").players.find((p) => p.id === "a")!;
+  assert(me.drawPile!.some((c) => c.id === "strike_r"), "chosen Strike went onto the draw pile");
+}
+
+// --- Blood for Blood: cost drops by 1 for each time you've lost HP this combat ---
+{
+  const g = solo([{ id: "blood_for_blood" }, { id: "bloodletting" }]);
+  let bfb = handOf(g, "a").find((c) => c.id === "blood_for_blood")!;
+  assert(bfb.cost === 4, "Blood for Blood starts at cost 4 (got " + bfb.cost + ")");
+  play(g, "a", "bloodletting"); // loseHp 3 -> one HP-loss event
+  bfb = handOf(g, "a").find((c) => c.id === "blood_for_blood")!;
+  assert(bfb.cost === 3, "Blood for Blood drops to 3 after losing HP once (got " + bfb.cost + ")");
+}
+
+// --- Spot Weakness: gains Strength only if an opponent is attacking you ---
+{
+  const g = solo([{ id: "spot_weakness" }]);
+  play(g, "a", "spot_weakness");
+  assert(powerOf(g, "a", "strength") === 0, "Spot Weakness gives nothing with no incoming attack");
+}
+{
+  const g = solo([{ id: "spot_weakness" }, { id: "defend_r" }]);
+  play(g, "b", "strike_r", "a"); // Bob queues an attack on Alice first
+  play(g, "a", "spot_weakness");
+  assert(powerOf(g, "a", "strength") === 3, "Spot Weakness grants 3 Strength vs an incoming attack");
+}
+
+// --- Burning Pact: exhaust a chosen hand card, then draw ---
+{
+  const g = solo([{ id: "burning_pact" }, { id: "strike_r" }, { id: "defend_r" }, { id: "bash" }]);
+  play(g, "a", "burning_pact");
+  const pc = g.viewFor("a").pendingChoice;
+  assert(!!pc && pc.source === "hand", "Burning Pact opens a hand selection");
+  const defend = pc!.cards.find((c) => c.id === "defend_r")!;
+  g.resolveChoice("a", [defend.uid]);
+  const me = g.viewFor("a").players.find((p) => p.id === "a")!;
+  assert(me.exhaustPile!.some((c) => c.id === "defend_r"), "Burning Pact exhausted the chosen Defend");
+  assert(g.viewFor("a").pendingChoice == null, "Burning Pact choice cleared");
+}
+
+// --- Warcry: draw, then put a chosen hand card on top of draw; exhausts itself ---
+{
+  const g = solo([{ id: "warcry" }, { id: "strike_r" }, { id: "defend_r" }, { id: "bash" }, { id: "clash" }]);
+  play(g, "a", "warcry");
+  const pc = g.viewFor("a").pendingChoice;
+  assert(!!pc && pc.source === "hand", "Warcry opens a hand selection");
+  const strike = pc!.cards.find((c) => c.id === "strike_r")!;
+  g.resolveChoice("a", [strike.uid]);
+  const me = g.viewFor("a").players.find((p) => p.id === "a")!;
+  assert(me.exhaustPile!.some((c) => c.id === "warcry"), "Warcry exhausted itself");
+  assert(me.drawPile!.some((c) => c.id === "strike_r"), "Warcry put the chosen card on top of draw");
+}
+
+// --- Regent helpers ---
+function regentSolo(deckA: Spec[], seed = 7, hp = 200) {
+  const g = new GameEngine("regent", seededRng(seed));
+  g.addPlayer({ id: "a", name: "A", deck: deckA, relics: ["divine_right"], maxHp: hp });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: hp });
+  g.start();
+  return g;
+}
+const starsOf = (g: GameEngine, id: string) =>
+  g.viewFor(id).players.find((p) => p.id === id)!.stars ?? 0;
+const forgeOf = (g: GameEngine, id: string) =>
+  g.viewFor(id).players.find((p) => p.id === id)!.forge;
+
+// --- Regent: Star Energy economy (Divine Right grant, Venerate gain, spend) ---
+{
+  const g = regentSolo([
+    { id: "venerate" },
+    { id: "falling_star" },
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "cloak_of_stars" },
+  ]);
+  const me0 = g.viewFor("a").players.find((p) => p.id === "a")!;
+  assert(me0.usesStars === true, "Regent uses Star Energy");
+  assert(starsOf(g, "a") === 3, "Divine Right grants 3 starting Stars");
+  assert(g.viewFor("b").players.find((p) => p.id === "a")!.stars === null, "opponent Star Energy hidden");
+  assert(play(g, "a", "venerate") === null, "Venerate plays");
+  assert(starsOf(g, "a") === 5, "Venerate adds 2 Stars (3 -> 5)");
+  const before = hpOf(g, "b");
+  assert(play(g, "a", "falling_star", "b") === null, "Falling Star plays");
+  assert(starsOf(g, "a") === 3, "Falling Star spends 2 Stars (5 -> 3)");
+  assert(powerOf(g, "b", "vulnerable") >= 1, "Falling Star applies Vulnerable");
+  finishTurn(g);
+  assert(hpOf(g, "b") < before, "Falling Star dealt damage at resolution");
+}
+
+// --- Regent: not enough Star Energy blocks the play ---
+{
+  const g = regentSolo([
+    { id: "comet" }, // starCost 5, we only have 3
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  assert(play(g, "a", "comet", "b") === "Not enough Star Energy.", "Comet rejected without 5 Stars");
+}
+
+// --- Regent: Forge grants the Sovereign Blade, which strikes for the Forge ---
+{
+  const g = regentSolo([
+    { id: "bulwark" }, // block 13 + forge 10
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  assert(play(g, "a", "bulwark") === null, "Bulwark plays");
+  assert(forgeOf(g, "a") === 10, "Bulwark forges 10");
+  assert(handOf(g, "a").some((c) => c.id === "sovereign_blade"), "first Forge grants Sovereign Blade to hand");
+  finishTurn(g); // Blade has Retain, so it stays in hand into turn 2
+  assert(handOf(g, "a").some((c) => c.id === "sovereign_blade"), "Sovereign Blade retained into next turn");
+  const before = hpOf(g, "b");
+  assert(play(g, "a", "sovereign_blade", "b") === null, "Sovereign Blade plays");
+  assert(g.viewFor("a").players.find((p) => p.id === "a")!.drawPile!.some((c) => c.id === "sovereign_blade"),
+    "Sovereign Blade reshuffles into the draw pile after use");
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 10, "Sovereign Blade deals damage equal to Forge (10)");
+}
+
+// --- Regent: Crescent Spear scales with Star-cost cards in hand ---
+{
+  const g = regentSolo([
+    { id: "crescent_spear" }, // 6 + 2 per Star-cost card in hand
+    { id: "falling_star" }, // Star-cost card
+    { id: "cloak_of_stars" }, // Star-cost card
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+  ]);
+  const before = hpOf(g, "b");
+  assert(play(g, "a", "crescent_spear", "b") === null, "Crescent Spear plays");
+  finishTurn(g);
+  // After it leaves hand, 2 Star-cost cards remain: 6 + 2*2 = 10.
+  assert(before - hpOf(g, "b") === 10, "Crescent Spear deals 6 + 2 per Star-cost card (10)");
+}
+
+// --- Regent: BEGONE!! transforms a hand card into a Minion Strike token ---
+{
+  const g = regentSolo([
+    { id: "begone" },
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  assert(!handOf(g, "a").some((c) => c.id === "minion_strike"), "no Minion Strike before BEGONE");
+  assert(play(g, "a", "begone") === null, "BEGONE plays");
+  assert(handOf(g, "a").some((c) => c.id === "minion_strike"), "BEGONE created a Minion Strike in hand");
+}
+
+// --- Regent: Beat into Shape forges more per OTHER attack played this turn ---
+{
+  const g = regentSolo([
+    { id: "strike_reg" }, // an attack played first
+    { id: "beat_into_shape" }, // forge 5 + 5 per other attack this turn
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  assert(play(g, "a", "strike_reg", "b") === null, "Strike plays (1st attack)");
+  assert(forgeOf(g, "a") === 0, "no Forge before Beat into Shape");
+  assert(play(g, "a", "beat_into_shape", "b") === null, "Beat into Shape plays");
+  // attacksThisTurn = 2 (strike + beat); otherAttacks = 1 -> forge 5 + 5*1 = 10.
+  assert(forgeOf(g, "a") === 10, "Beat into Shape forges 5 + 5 per other attack (10)");
+}
+
+// --- Regent: Bombardment auto-plays from Exhaust each turn ---
+{
+  const g = regentSolo([
+    { id: "bombardment" }, // cost 3, exhaust, auto-plays from exhaust
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  const before = hpOf(g, "b");
+  assert(play(g, "a", "bombardment", "b") === null, "Bombardment plays");
+  assert(g.viewFor("a").players.find((p) => p.id === "a")!.exhaustCount >= 1, "Bombardment exhausts");
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 18, "Bombardment deals 18 on first play");
+  // On the owner's next turn it auto-plays from the Exhaust pile for another 18.
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 36, "Bombardment auto-plays from Exhaust for another 18 (36)");
+}
+
+// --- Regent: Bundle of Joy adds 3 random Colorless cards to hand ---
+{
+  const g = regentSolo([
+    { id: "bundle_of_joy" }, // exhaust, add 3 random neutral cards to hand
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  const beforeUids = new Set(handOf(g, "a").map((c) => c.uid));
+  const before = beforeUids.size;
+  assert(play(g, "a", "bundle_of_joy") === null, "Bundle of Joy plays");
+  // -1 for the played-and-exhausted Bundle, +3 freshly created cards.
+  assert(handOf(g, "a").length === before - 1 + 3, "Bundle of Joy nets +2 cards in hand");
+  const added = handOf(g, "a").filter((c) => !beforeUids.has(c.uid));
+  assert(added.length === 3, "Bundle of Joy added 3 new cards to hand");
+}
+
+// --- Regent: Collision Course adds a Debris to hand ---
+{
+  const g = regentSolo([
+    { id: "collision_course" }, // damage 11 + add Debris to hand
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  const before = hpOf(g, "b");
+  assert(play(g, "a", "collision_course", "b") === null, "Collision Course plays");
+  assert(handOf(g, "a").some((c) => c.id === "debris"), "Collision Course adds Debris to hand");
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 11, "Collision Course deals 11");
+}
+
+// --- Regent: Crash Landing fills the hand with Debris ---
+{
+  const g = regentSolo([
+    { id: "crash_landing" }, // all_enemies damage 21 + fill hand with Debris
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  const before = hpOf(g, "b");
+  assert(play(g, "a", "crash_landing", "b") === null, "Crash Landing plays");
+  assert(handOf(g, "a").length === 5, "Crash Landing fills the hand (5)");
+  assert(handOf(g, "a").some((c) => c.id === "debris"), "Crash Landing adds Debris");
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 21, "Crash Landing deals 21");
+}
+
+// --- Regent: Convergence grants energy + Stars next turn ---
+{
+  const g = regentSolo([
+    { id: "convergence" }, // next turn: +1 energy, +1 Star, retain hand
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  assert(play(g, "a", "convergence") === null, "Convergence plays");
+  const stars0 = starsOf(g, "a"); // 3, unspent by Convergence
+  finishTurn(g);
+  const me = g.viewFor("a").players.find((p) => p.id === "a")!;
+  assert(me.energy === 4, "Convergence grants +1 energy next turn (4)");
+  assert(starsOf(g, "a") === stars0 + 1, "Convergence grants +1 Star next turn");
+}
+
+// --- Regent: Decisions, Decisions replays a chosen Skill 3 times ---
+{
+  const g = regentSolo([
+    { id: "venerate" }, // +2 Stars
+    { id: "venerate" }, // +2 Stars (3 -> 7, enough for starCost 6)
+    { id: "decisions_decisions" }, // draw 3, then replay a chosen Skill x3
+    { id: "defend_reg" }, // the Skill we'll replay (block 5)
+    { id: "cloak_of_stars" },
+  ]);
+  assert(play(g, "a", "venerate") === null, "Venerate 1 plays");
+  assert(play(g, "a", "venerate") === null, "Venerate 2 plays");
+  assert(starsOf(g, "a") === 7, "two Venerates bring Stars to 7");
+  assert(play(g, "a", "decisions_decisions") === null, "Decisions, Decisions plays");
+  assert(starsOf(g, "a") === 1, "Decisions spends 6 Stars (7 -> 1)");
+  const pc = g.viewFor("a").pendingChoice;
+  assert(pc != null, "Decisions pauses for a Skill choice");
+  assert(pc!.cards.every((c) => c.type === "skill"), "only Skills are offered to replay");
+  const defend = handOf(g, "a").find((c) => c.id === "defend_reg")!;
+  assert(g.resolveChoice("a", [defend.uid]) === null, "replay choice resolves");
+  const me = g.viewFor("a").players.find((p) => p.id === "a")!;
+  assert(me.block === 15, "Decisions replays Defend 3 times for 15 block");
 }
 
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

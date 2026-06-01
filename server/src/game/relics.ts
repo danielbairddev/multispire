@@ -33,6 +33,8 @@ export interface RelicHooks {
   bonusDrawFirstTurn?: number;
   /** Increases max HP (and current HP) when brought into a match. */
   bonusMaxHp?: number;
+  /** Star Energy granted at the start of combat (Regent's Divine Right). */
+  startingStars?: number;
 }
 
 export const RELICS: Record<string, RelicHooks> = {
@@ -41,6 +43,12 @@ export const RELICS: Record<string, RelicHooks> = {
     id: "burning_blood",
     name: "Burning Blood",
     description: "Ironclad starter. (Heal after combat is not modeled here.)",
+  },
+  divine_right: {
+    id: "divine_right",
+    name: "Divine Right",
+    description: "Regent starter. Start each combat with 3 Star Energy.",
+    startingStars: 3,
   },
 
   // ---- Block on combat start ----
