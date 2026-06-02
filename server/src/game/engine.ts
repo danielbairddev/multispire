@@ -205,6 +205,11 @@ export class GameEngine {
   // Kingly Punch: per-card-instance bonus damage accumulated as the card is
   // drawn over this combat, keyed by the card instance uid.
   private drawDamageBonus = new Map<string, number>();
+  // Void: while drawing the start-of-turn hand, energy lost to drawn cards is
+  // accumulated here and netted against the turn's fresh Energy (so it isn't
+  // overwritten). Outside that window, the loss applies to live Energy directly.
+  private inTurnStartDraw = false;
+  private turnStartEnergyLoss = 0;
   // A card-selection the engine is paused on (Headbutt, Warcry, Burning Pact).
   // While set, no other play/pass is accepted until the chooser resolves it.
   private pendingChoice: PendingChoice | null = null;
@@ -393,6 +398,10 @@ export class GameEngine {
       if (blades > 0) this.onCardCreated(p, blades);
       // Bombardment and friends auto-play from the Exhaust pile each turn.
       this.autoPlayFromExhaust(p);
+      // Open the start-of-turn draw window: energy lost to drawn cards (Void) is
+      // netted against this turn's fresh Energy below rather than the stale value.
+      this.inTurnStartDraw = true;
+      this.turnStartEnergyLoss = 0;
       if (first) this.drawOpeningHand(p);
       else this.drawCards(p, HAND_SIZE);
       // Queued (Glow / Pale Blue Dot) extra draw, and Tyranny's draw-then-exhaust.
@@ -437,7 +446,11 @@ export class GameEngine {
         p.hpLossCount++;
         this.drawCards(p, brutality);
       }
-      p.energy = energy;
+      // Net any Void-style energy loss from the start-of-turn draws, then close
+      // the window so later (mid-turn) draws subtract from live Energy directly.
+      p.energy = Math.max(0, energy - this.turnStartEnergyLoss);
+      this.inTurnStartDraw = false;
+      this.turnStartEnergyLoss = 0;
       // Metallicize / Plated Armor: gain block at the top of the turn.
       const metal = p.powers.get("metallicize") ?? 0;
       if (metal > 0) {
@@ -2020,6 +2033,12 @@ export class GameEngine {
         if (def?.damageUpOnDraw) {
           this.drawDamageBonus.set(c.uid, (this.drawDamageBonus.get(c.uid) ?? 0) + def.damageUpOnDraw);
         }
+        // Void: lose Energy when drawn. During the start-of-turn draw the loss is
+        // banked (netted against fresh Energy); mid-turn it hits live Energy now.
+        if (def?.energyLossOnDraw) {
+          if (this.inTurnStartDraw) this.turnStartEnergyLoss += def.energyLossOnDraw;
+          else p.energy = Math.max(0, p.energy - def.energyLossOnDraw);
+        }
       }
     }
   }
@@ -2490,5 +2509,6 @@ export function describeCard(def: CardDef): string {
   if (def.retain) text += " Retain.";
   if (def.innate) text += " Innate.";
   if (def.playFromDrawIfTop) text += " At end of turn, if on top of your draw pile, play it.";
+  if (def.energyLossOnDraw) text += ` Lose ${def.energyLossOnDraw} Energy when drawn.`;
   return text;
 }

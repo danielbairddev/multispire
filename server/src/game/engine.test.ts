@@ -1173,4 +1173,14 @@ const energyOf = (g: GameEngine, id: string) =>
   assert(blockOf(g, "a") === 20, "two I Am Invincible auto-played for 20 Block, got " + blockOf(g, "a"));
 }
 
+// --- Void: lose 1 Energy when it's drawn (netted against the turn's energy) ---
+{
+  const g = solo(
+    [{ id: "void" }, { id: "strike_r" }, { id: "strike_r" }, { id: "strike_r" }, { id: "defend_r" }],
+    5,
+  );
+  assert(handOf(g, "a").some((c) => c.id === "void"), "Void is in the opening hand");
+  assert(energyOf(g, "a") === 2, "Void cost 1 Energy when drawn (3 -> 2), got " + energyOf(g, "a"));
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

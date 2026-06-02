@@ -199,6 +199,11 @@ export interface CardDef {
    */
   damageUpOnDraw?: number;
   /**
+   * Lose this much Energy whenever this card is drawn (e.g. the Void status). At
+   * the start of a turn the loss is netted against the turn's fresh Energy.
+   */
+  energyLossOnDraw?: number;
+  /**
    * Marks a card whose real behavior is only partially modeled. When approximated
    * cards are disabled (the default), these are shown as "not yet supported" and
    * can't be added to a build or played.

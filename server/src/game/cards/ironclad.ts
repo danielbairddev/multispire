@@ -1020,7 +1020,8 @@ export const IRONCLAD_CARDS: CardDef[] = [
     rarity: "special",
     cost: -2,
     target: "none",
-    // Approximated: the "lose 1 energy when drawn" rider is not modeled.
+    // Unplayable; you lose 1 Energy whenever it is drawn (engine draw hook).
+    energyLossOnDraw: 1,
     effects: [],
     unplayable: true,
   },
