@@ -134,6 +134,10 @@ export type Effect =
   | { kind: "multiplyTargetPoison"; factor: number }
   // Discard every non-Attack card from your hand (e.g. Unload).
   | { kind: "discardNonAttacks" }
+  // Interactive: choose a card in your hand and add `amount` copies of it to your
+  // hand (e.g. Heirloom Hammer copies a chosen Colorless card). `colorlessOnly`
+  // restricts the eligible pool to Colorless (neutral) cards. The engine pauses.
+  | { kind: "duplicateChosen"; amount: number; colorlessOnly?: boolean }
   // Escape hatch: an effect we know exists but haven't modeled yet. Logged loudly.
   | { kind: "unimplemented"; note: string };
 
@@ -275,6 +279,8 @@ export type PowerId =
   | "wraith_form"
   // Corpse Explosion: when this target dies, deal its Max HP (×N) to all enemies.
   | "corpse_explosion"
+  // Void Form: the first N cards you play each turn cost 0.
+  | "void_form"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

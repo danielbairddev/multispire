@@ -1023,4 +1023,49 @@ const energyOf = (g: GameEngine, id: string) =>
   assert(hpOf(g, "c") < cBefore, "Corpse Explosion damaged the third player on B's death");
 }
 
+// --- Void Form: the first 2 cards each turn cost 0 ---
+{
+  const g = regentSolo([
+    { id: "void_form" }, // power, cost 3
+    { id: "strike_reg" }, // cost 1
+    { id: "strike_reg" }, // cost 1
+    { id: "defend_reg" },
+    { id: "cloak_of_stars" },
+  ]);
+  ensure(g, "a");
+  assert(energyOf(g, "a") === 3, "starts with 3 energy");
+  assert(play(g, "a", "void_form") === null, "Void Form plays");
+  assert(powerOf(g, "a", "void_form") === 2, "Void Form grants 2 stacks");
+  assert(energyOf(g, "a") === 0, "Void Form cost all 3 energy");
+  // First card after Void Form (the 2nd card played) is free.
+  assert(play(g, "a", "strike_reg", "b") === null, "1st Strike is free under Void Form");
+  assert(energyOf(g, "a") === 0, "still 0 energy after free Strike");
+  // Third card played: no longer free, and we have no energy -> rejected.
+  assert(play(g, "a", "strike_reg", "b") === "Not enough energy.", "3rd card costs energy again");
+}
+
+// --- Heirloom Hammer: deal 20 and copy a chosen Colorless card in hand ---
+{
+  const g = regentSolo([
+    { id: "heirloom_hammer" }, // cost 2: 20 dmg + duplicate a Colorless card
+    { id: "bite" }, // a Colorless card to copy
+    { id: "swift_strike" }, // a second Colorless card, so the choice pauses
+    { id: "defend_reg" },
+    { id: "cloak_of_stars" },
+  ]);
+  ensure(g, "a");
+  const before = hpOf(g, "b");
+  const biteCount0 = handOf(g, "a").filter((c) => c.id === "bite").length;
+  assert(biteCount0 === 1, "one Bite in hand to start");
+  assert(play(g, "a", "heirloom_hammer", "b") === null, "Heirloom Hammer plays");
+  // Two Colorless cards eligible, so a choice should be pending.
+  assert(g.viewFor("a").pendingChoice != null, "Heirloom Hammer pauses for a copy choice");
+  const bite = handOf(g, "a").find((c) => c.id === "bite")!;
+  assert(g.resolveChoice("a", [bite.uid]) === null, "resolve the copy choice");
+  const biteCount1 = handOf(g, "a").filter((c) => c.id === "bite").length;
+  assert(biteCount1 === 2, "Bite was copied into hand (1 -> 2)");
+  finishTurn(g);
+  assert(hpOf(g, "b") < before, "Heirloom Hammer dealt damage at resolution");
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

@@ -141,7 +141,13 @@ interface InternalPlayer {
 // A card-selection the engine is paused on. The played card has already left the
 // hand and been paid for; we're waiting for `playerId` to pick cards, after which
 // `remaining` effects finish and the play completes.
-type ChoiceKind = "putDiscardOnDraw" | "putHandOnDraw" | "exhaustChosen" | "replaySkill" | "discardChosen";
+type ChoiceKind =
+  | "putDiscardOnDraw"
+  | "putHandOnDraw"
+  | "exhaustChosen"
+  | "replaySkill"
+  | "discardChosen"
+  | "duplicateChosen";
 interface PendingChoice {
   playerId: string;
   kind: ChoiceKind;
@@ -156,6 +162,8 @@ interface PendingChoice {
   instUid?: string;
   // replaySkill only: how many times to play the chosen Skill.
   replayTimes?: number;
+  // duplicateChosen only: how many copies to add of the chosen card.
+  dupAmount?: number;
 }
 
 export interface PlayerSeed {
@@ -568,6 +576,9 @@ export class GameEngine {
   /** Energy cost after any state-dependent discount (e.g. Blood for Blood). */
   private effectiveCost(p: InternalPlayer, def: CardDef): number | "X" {
     if (def.cost === "X") return "X";
+    // Void Form: the first N cards each turn cost 0.
+    const vf = p.powers.get("void_form") ?? 0;
+    if (vf > 0 && p.cardsPlayedThisTurn < vf) return 0;
     if (def.dynamicCost === "hp_loss") return Math.max(0, def.cost - p.hpLossCount);
     if (def.dynamicCost === "discards") return Math.max(0, def.cost - p.discardsThisTurn);
     return def.cost;
@@ -822,7 +833,15 @@ export class GameEngine {
     eff: Effect,
   ): eff is Extract<
     Effect,
-    { kind: "putDiscardOnDraw" | "putHandOnDraw" | "exhaustChosen" | "replayChosenSkill" | "discard" }
+    {
+      kind:
+        | "putDiscardOnDraw"
+        | "putHandOnDraw"
+        | "exhaustChosen"
+        | "replayChosenSkill"
+        | "discard"
+        | "duplicateChosen";
+    }
   > {
     // A player-chosen discard pauses; a random discard resolves immediately.
     if (eff.kind === "discard") return !eff.random;
@@ -830,7 +849,8 @@ export class GameEngine {
       eff.kind === "putDiscardOnDraw" ||
       eff.kind === "putHandOnDraw" ||
       eff.kind === "exhaustChosen" ||
-      eff.kind === "replayChosenSkill"
+      eff.kind === "replayChosenSkill" ||
+      eff.kind === "duplicateChosen"
     );
   }
 
@@ -861,19 +881,28 @@ export class GameEngine {
     const kind: ChoiceKind =
       eff.kind === "replayChosenSkill" ? "replaySkill" : eff.kind === "discard" ? "discardChosen" : eff.kind;
     const replayTimes = eff.kind === "replayChosenSkill" ? eff.times : undefined;
+    const dupAmount = eff.kind === "duplicateChosen" ? eff.amount : undefined;
     const sourcePile: "hand" | "discard" = kind === "putDiscardOnDraw" ? "discard" : "hand";
-    // The eligible pool: replaySkill is limited to replayable Skills in hand.
-    const eligible =
+    // The eligible pool: replaySkill is limited to replayable Skills in hand;
+    // duplicateChosen may be restricted to Colorless (neutral) cards.
+    let eligible =
       kind === "replaySkill"
         ? this.replayableSkills(source)
         : sourcePile === "discard"
           ? source.discard.slice()
           : source.hand.slice();
+    if (eff.kind === "duplicateChosen" && eff.colorlessOnly) {
+      eligible = eligible.filter((c) => resolveCard(c.id, c.upgraded)?.character === "neutral");
+    }
     if (eligible.length === 0) return false; // nothing to choose; skip silently
-    const pick = kind === "replaySkill" ? 1 : Math.min((eff as { amount: number }).amount, eligible.length);
+    // replaySkill and duplicateChosen pick exactly one card; others pick `amount`.
+    const pick =
+      kind === "replaySkill" || kind === "duplicateChosen"
+        ? 1
+        : Math.min((eff as { amount: number }).amount, eligible.length);
     if (eligible.length <= pick) {
       // Forced selection of everything eligible; resolve immediately.
-      this.performChoice(kind, source, eligible.map((c) => c.uid), replayTimes);
+      this.performChoice(kind, source, eligible.map((c) => c.uid), replayTimes, dupAmount);
       return false;
     }
     this.pendingChoice = {
@@ -888,6 +917,7 @@ export class GameEngine {
       def,
       instUid,
       replayTimes,
+      dupAmount,
     };
     return true;
   }
@@ -905,11 +935,33 @@ export class GameEngine {
         return `Choose ${n} to discard`;
       case "replaySkill":
         return `Choose a Skill to play again`;
+      case "duplicateChosen":
+        return `Choose a card to copy into your hand`;
     }
   }
 
   // Carry out the chosen movement. `uids` are already validated by the caller.
-  private performChoice(kind: ChoiceKind, source: InternalPlayer, uids: string[], replayTimes?: number): void {
+  private performChoice(
+    kind: ChoiceKind,
+    source: InternalPlayer,
+    uids: string[],
+    replayTimes?: number,
+    dupAmount?: number,
+  ): void {
+    if (kind === "duplicateChosen") {
+      // Copy the chosen card(s) into hand without removing the original.
+      const n = dupAmount ?? 1;
+      for (const u of uids) {
+        const orig = source.hand.find((c) => c.uid === u);
+        if (!orig) continue;
+        const d = resolveCard(orig.id, orig.upgraded);
+        for (let i = 0; i < n; i++) {
+          source.hand.push({ uid: uid("c"), id: orig.id, upgraded: orig.upgraded });
+        }
+        this.pushLog(`✦ ${source.name} copies ${d?.name ?? orig.id}${n > 1 ? ` ×${n}` : ""} into their hand.`);
+      }
+      return;
+    }
     const pile = kind === "putDiscardOnDraw" ? source.discard : source.hand;
     const chosen: CardInstance[] = [];
     for (const u of uids) {
@@ -957,9 +1009,9 @@ export class GameEngine {
     const pile = pc.source === "discard" ? pc.effSource.discard : pc.effSource.hand;
     const valid = [...new Set(uids)].filter((u) => pile.some((c) => c.uid === u));
     if (valid.length !== pc.pick) return `Choose exactly ${pc.pick} card${pc.pick > 1 ? "s" : ""}.`;
-    const { kind, effSource, remaining, targets, def, instUid, replayTimes } = pc;
+    const { kind, effSource, remaining, targets, def, instUid, replayTimes, dupAmount } = pc;
     this.pendingChoice = null;
-    this.performChoice(kind, effSource, valid, replayTimes);
+    this.performChoice(kind, effSource, valid, replayTimes, dupAmount);
     // Continue the rest of the played card's effects (which may pause again).
     const paused = this.applyEffectList(remaining, effSource, targets, def, instUid);
     if (paused) return null;
@@ -1428,6 +1480,7 @@ export class GameEngine {
       case "putHandOnDraw":
       case "exhaustChosen":
       case "replayChosenSkill":
+      case "duplicateChosen":
         // Interactive choices are intercepted by applyEffectList before reaching
         // here. (Only reached if nested in onExhaust/ifTargetHasPower, which our
         // cards avoid; treated as a no-op rather than pausing in those contexts.)
@@ -2181,6 +2234,15 @@ export function describeCard(def: CardDef): string {
       case "exhaustChosen":
         parts.push(`Exhaust ${e.amount} chosen card${e.amount > 1 ? "s" : ""} from your hand`);
         break;
+      case "duplicateChosen": {
+        const what = e.colorlessOnly ? "Colorless card" : "card";
+        parts.push(
+          e.amount > 1
+            ? `Add ${e.amount} copies of a chosen ${what} in your hand to your hand`
+            : `Add a copy of a chosen ${what} in your hand to your hand`,
+        );
+        break;
+      }
       case "gainStars":
         parts.push(`Gain ${e.amount} Star Energy`);
         break;

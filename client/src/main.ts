@@ -309,7 +309,7 @@ function addCard(id: string, upgraded: boolean): void {
   const e = ui.builder.entries.find((x) => x.id === id && x.upgraded === upgraded);
   if (e) e.count += 1;
   else ui.builder.entries.push({ id, upgraded, count: 1 });
-  render();
+  refreshBuilder();
 }
 
 function changeCount(id: string, upgraded: boolean, delta: number): void {
@@ -317,7 +317,7 @@ function changeCount(id: string, upgraded: boolean, delta: number): void {
   if (!e) return;
   e.count += delta;
   if (e.count <= 0) ui.builder.entries = ui.builder.entries.filter((x) => x !== e);
-  render();
+  refreshBuilder();
 }
 
 function setEntryUpgraded(id: string, fromUpgraded: boolean, upgraded: boolean): void {
@@ -328,11 +328,88 @@ function setEntryUpgraded(id: string, fromUpgraded: boolean, upgraded: boolean):
   const target = ui.builder.entries.find((x) => x.id === id && x.upgraded === upgraded);
   if (target) target.count += moved;
   else ui.builder.entries.push({ id, upgraded, count: moved });
-  render();
+  refreshBuilder();
 }
 
 function deckCount(): number {
   return ui.builder.entries.reduce((s, e) => s + e.count, 0);
+}
+
+// A short breakdown of the in-progress deck: total plus per-type counts, and a
+// note when cards from another hero are mixed in (they still play fine, but it's
+// usually unintended).
+function deckSummaryText(): string {
+  const total = deckCount();
+  if (total === 0) return "Empty deck — click a card on the left to add it.";
+  const byId = catalogById();
+  const counts: Record<string, number> = { attack: 0, skill: 0, power: 0, status: 0, curse: 0 };
+  let offHero = 0;
+  const hero = ui.builder.hero;
+  for (const e of ui.builder.entries) {
+    const c = byId.get(e.id);
+    if (c) {
+      counts[c.type] = (counts[c.type] ?? 0) + e.count;
+      if (hero && c.character !== hero && c.character !== "neutral") offHero += e.count;
+    }
+  }
+  const parts = [`${total} card${total === 1 ? "" : "s"}`];
+  for (const [type, label] of [
+    ["attack", "Attack"],
+    ["skill", "Skill"],
+    ["power", "Power"],
+    ["status", "Status"],
+    ["curse", "Curse"],
+  ] as const) {
+    if (counts[type]) parts.push(`${counts[type]} ${label}${counts[type] === 1 ? "" : "s"}`);
+  }
+  let text = parts.join(" · ");
+  if (offHero) text += ` · ⚠ ${offHero} off-hero card${offHero === 1 ? "" : "s"}`;
+  return text;
+}
+
+function clearDeckEntries(): void {
+  if (!ui.builder.entries.length) return;
+  ui.builder.entries = [];
+  refreshBuilder();
+}
+
+// Re-render only the live parts of the deckbuilder (card lists, relic widgets,
+// counters) instead of rebuilding the whole screen. This preserves the scroll
+// position of the catalog while you click "+ Add" repeatedly, and keeps search
+// inputs focused. Falls back to a full render if we're not on the builder.
+function refreshBuilder(): void {
+  const catalogList = document.querySelector("#catalogList") as HTMLElement | null;
+  const deckList = document.querySelector("#deckList") as HTMLElement | null;
+  if (ui.screen !== "deckbuilder" || !catalogList || !deckList) {
+    render();
+    return;
+  }
+  const relicPicker = document.querySelector("#relicPicker") as HTMLElement | null;
+  const relicChips = document.querySelector("#relicChips") as HTMLElement | null;
+  const cs = catalogList.scrollTop;
+  const ds = deckList.scrollTop;
+  const rs = relicPicker?.scrollTop ?? 0;
+  renderCatalogList(catalogList);
+  renderDeckList(deckList);
+  if (relicPicker) renderRelicPicker(relicPicker);
+  if (relicChips) renderRelicChips(relicChips);
+  catalogList.scrollTop = cs;
+  deckList.scrollTop = ds;
+  if (relicPicker) relicPicker.scrollTop = rs;
+  // Update the various live counters and the disabled state of the Use buttons.
+  const n = deckCount();
+  for (const id of ["#deckCount", "#deckCountTop"]) {
+    const node = document.querySelector(id);
+    if (node) node.textContent = String(n);
+  }
+  const summary = document.querySelector("#deckSummary");
+  if (summary) summary.textContent = deckSummaryText();
+  const relicCount = document.querySelector("#relicCount");
+  if (relicCount) relicCount.textContent = String(ui.builder.relics.length);
+  for (const id of ["#useDeck", "#useDeckTop", "#clearDeck"]) {
+    const btn = document.querySelector(id) as HTMLButtonElement | null;
+    if (btn) btn.disabled = ui.builder.entries.length === 0;
+  }
 }
 
 function builderToLoadout(): Loadout {
@@ -356,12 +433,12 @@ function addRelic(id: string): void {
   const r = id.trim();
   if (!r || ui.builder.relics.includes(r)) return;
   ui.builder.relics.push(r);
-  render();
+  refreshBuilder();
 }
 
 function removeRelic(id: string): void {
   ui.builder.relics = ui.builder.relics.filter((r) => r !== id);
-  render();
+  refreshBuilder();
 }
 
 function toggleRelic(id: string): void {
@@ -731,7 +808,7 @@ function renderDeckbuilder(): void {
         <div class="builder-titlerow">
           <button id="back" class="ghost">← Back</button>
           <h1>Deckbuilder</h1>
-          <button id="useDeckTop" class="primary" ${b.entries.length ? "" : "disabled"}>Use this deck (<span>${deckCount()}</span>)</button>
+          <button id="useDeckTop" class="primary" ${b.entries.length ? "" : "disabled"}>Use this deck (<span id="deckCountTop">${deckCount()}</span>)</button>
         </div>
         <div class="builder-meta">
           <label>Name <input id="bname" value="${escape(b.name)}" placeholder="Ironclad" /></label>
@@ -777,8 +854,9 @@ function renderDeckbuilder(): void {
         </div>
       </div>
       <div class="builder-foot">
-        <span class="muted">${deckCount()} cards${b.entries.length ? "" : " — click a card to add it"}</span>
+        <span class="muted" id="deckSummary">${escape(deckSummaryText())}</span>
         <span class="foot-actions">
+          <button id="clearDeck" class="ghost" title="Remove every card from the deck" ${b.entries.length ? "" : "disabled"}>🗑 Clear deck</button>
           <button id="copyJson" class="ghost" title="Copy this deck as JSON">📋 Copy JSON</button>
           <button id="dlJson" class="ghost" title="Download this deck as a .json file">⬇ Download</button>
           <button id="useDeck" class="primary" ${b.entries.length ? "" : "disabled"}>Use this deck</button>
@@ -792,7 +870,7 @@ function renderDeckbuilder(): void {
   const bhero = wrap.querySelector("#bhero") as HTMLSelectElement;
   bhero.addEventListener("change", () => {
     b.hero = bhero.value;
-    renderCatalogList(catalogList);
+    refreshBuilder();
   });
   const bhp = wrap.querySelector("#bhp") as HTMLInputElement;
   bhp.addEventListener("input", () => (b.maxHp = bhp.value));
@@ -839,6 +917,10 @@ function renderDeckbuilder(): void {
   });
   wrap.querySelector("#useDeck")!.addEventListener("click", useBuiltDeck);
   wrap.querySelector("#useDeckTop")!.addEventListener("click", useBuiltDeck);
+  wrap.querySelector("#clearDeck")!.addEventListener("click", () => {
+    if (deckCount() === 0) return;
+    if (confirm(`Remove all ${deckCount()} cards from the deck?`)) clearDeckEntries();
+  });
   wrap.querySelector("#copyJson")!.addEventListener("click", copyDeckJson);
   wrap.querySelector("#dlJson")!.addEventListener("click", downloadDeckJson);
 
@@ -909,6 +991,10 @@ function heroOptions(selected: string): string {
   const present = new Set<string>((ui.catalog ?? []).map((c) => c.character).filter((ch) => ch !== "neutral"));
   const order = ["ironclad", "silent", "regent", "defect", "watcher"];
   const heroes = order.filter((h) => present.has(h));
+  // Keep a previously-saved hero selectable even if its cards aren't in the
+  // catalog yet, so the dropdown reflects the real state instead of silently
+  // snapping to "Any hero".
+  if (selected && selected !== "neutral" && !heroes.includes(selected)) heroes.push(selected);
   const opt = (val: string, label: string) =>
     `<option value="${val}" ${selected === val ? "selected" : ""}>${label}</option>`;
   return [opt("", "Any hero"), ...heroes.map((h) => opt(h, HERO_LABELS[h] ?? h))].join("");

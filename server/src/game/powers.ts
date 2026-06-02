@@ -103,6 +103,8 @@ export const POWERS: Record<string, PowerDef> = {
   wraith_form: { id: "wraith_form", name: "Wraith Form", kind: "buff" },
   // Corpse Explosion: when this target dies, deal its Max HP (×N) to all enemies.
   corpse_explosion: { id: "corpse_explosion", name: "Corpse Explosion", kind: "debuff" },
+  // Void Form: the first N cards you play each turn cost 0.
+  void_form: { id: "void_form", name: "Void Form", kind: "buff" },
 };
 
 export function getPower(id: PowerId): PowerDef {

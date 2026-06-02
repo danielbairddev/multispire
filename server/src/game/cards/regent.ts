@@ -1213,10 +1213,17 @@ export const REGENT_CARDS: CardDef[] = [
     rarity: "rare",
     cost: 2,
     target: "enemy",
-    // Real card: copy a chosen Colorless card in hand. Not yet modeled.
-    approx: true,
-    effects: [{ kind: "damage", amount: 20 }],
-    upgrade: { effects: [{ kind: "damage", amount: 25 }] },
+    // Deal 20 damage and add a copy of a chosen Colorless card in your hand.
+    effects: [
+      { kind: "damage", amount: 20 },
+      { kind: "duplicateChosen", amount: 1, colorlessOnly: true },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 25 },
+        { kind: "duplicateChosen", amount: 1, colorlessOnly: true },
+      ],
+    },
   },
   {
     id: "i_am_invincible",
@@ -1351,9 +1358,8 @@ export const REGENT_CARDS: CardDef[] = [
     rarity: "rare",
     cost: 3,
     target: "self",
-    // Real card: the first 2 cards each turn are free. Not yet modeled.
-    approx: true,
-    effects: [{ kind: "unimplemented", note: "First 2 cards each turn cost 0" }],
+    // The first 2 cards you play each turn cost 0.
+    effects: [{ kind: "applyPower", power: "void_form", amount: 2, to: "self" }],
   },
 
   // ---- Ancients ----
