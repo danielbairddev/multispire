@@ -665,8 +665,8 @@ export const REGENT_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 4,
     target: "enemy",
-    // Real card: reduces its own cost by 1 each time you draw it. Not yet modeled.
-    approx: true,
+    // Costs 1 less each time you draw it this combat (tracked per instance).
+    costDownOnDraw: 1,
     effects: [{ kind: "damage", amount: 27 }],
     upgrade: { effects: [{ kind: "damage", amount: 35 }] },
   },

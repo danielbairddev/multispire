@@ -1068,4 +1068,21 @@ const energyOf = (g: GameEngine, id: string) =>
   assert(hpOf(g, "b") < before, "Heirloom Hammer dealt damage at resolution");
 }
 
+// --- Kingly Kick: gets 1 cheaper each time it's drawn ---
+{
+  const g = regentSolo([
+    { id: "kingly_kick" }, // base cost 4
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  const kkCost = () => handOf(g, "a").find((c) => c.id === "kingly_kick")?.cost;
+  assert(kkCost() === 3, "Kingly Kick costs 3 after its first draw (4 - 1), got " + kkCost());
+  assert(play(g, "a", "kingly_kick", "b") === null, "Kingly Kick plays");
+  finishTurn(g);
+  // Reshuffled and redrawn on turn 2 -> another -1.
+  assert(kkCost() === 2, "Kingly Kick costs 2 after a second draw, got " + kkCost());
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

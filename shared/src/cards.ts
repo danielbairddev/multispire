@@ -180,6 +180,11 @@ export interface CardDef {
    */
   dynamicCost?: "hp_loss" | "discards";
   /**
+   * Permanently lowers this card instance's cost by this much every time it is
+   * drawn this combat (e.g. Kingly Kick: −1 per draw). Tracked per card instance.
+   */
+  costDownOnDraw?: number;
+  /**
    * Marks a card whose real behavior is only partially modeled. When approximated
    * cards are disabled (the default), these are shown as "not yet supported" and
    * can't be added to a build or played.

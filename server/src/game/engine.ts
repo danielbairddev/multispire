@@ -195,6 +195,9 @@ export class GameEngine {
   // Rampage: per-card-instance bonus damage accumulated over this combat, keyed
   // by the card instance uid.
   private rampageStacks = new Map<string, number>();
+  // Kingly Kick: per-card-instance cost reduction accumulated as the card is
+  // drawn over this combat, keyed by the card instance uid.
+  private costReduction = new Map<string, number>();
   // A card-selection the engine is paused on (Headbutt, Warcry, Burning Pact).
   // While set, no other play/pass is accepted until the chooser resolves it.
   private pendingChoice: PendingChoice | null = null;
@@ -465,7 +468,7 @@ export class GameEngine {
     const restriction = this.playRestriction(p, def);
     if (restriction) return restriction;
 
-    const effCost = this.effectiveCost(p, def);
+    const effCost = this.effectiveCost(p, def, inst);
     const cost = effCost === "X" ? p.energy : effCost;
     if (typeof cost === "number" && cost > p.energy) return "Not enough energy.";
     const rawStarCost = def.starCost ?? 0;
@@ -574,14 +577,16 @@ export class GameEngine {
   }
 
   /** Energy cost after any state-dependent discount (e.g. Blood for Blood). */
-  private effectiveCost(p: InternalPlayer, def: CardDef): number | "X" {
+  private effectiveCost(p: InternalPlayer, def: CardDef, inst?: CardInstance): number | "X" {
     if (def.cost === "X") return "X";
     // Void Form: the first N cards each turn cost 0.
     const vf = p.powers.get("void_form") ?? 0;
     if (vf > 0 && p.cardsPlayedThisTurn < vf) return 0;
-    if (def.dynamicCost === "hp_loss") return Math.max(0, def.cost - p.hpLossCount);
-    if (def.dynamicCost === "discards") return Math.max(0, def.cost - p.discardsThisTurn);
-    return def.cost;
+    // Kingly Kick: subtract whatever cost reduction this instance has accrued.
+    const drawDown = inst ? this.costReduction.get(inst.uid) ?? 0 : 0;
+    if (def.dynamicCost === "hp_loss") return Math.max(0, def.cost - p.hpLossCount - drawDown);
+    if (def.dynamicCost === "discards") return Math.max(0, def.cost - p.discardsThisTurn - drawDown);
+    return Math.max(0, def.cost - drawDown);
   }
 
   /** A player passes priority. */
@@ -1870,7 +1875,14 @@ export class GameEngine {
         this.shuffle(p.draw);
       }
       const c = p.draw.pop();
-      if (c) p.hand.push(c);
+      if (c) {
+        p.hand.push(c);
+        // Kingly Kick and friends get permanently cheaper each time they're drawn.
+        const def = resolveCard(c.id, c.upgraded);
+        if (def?.costDownOnDraw) {
+          this.costReduction.set(c.uid, (this.costReduction.get(c.uid) ?? 0) + def.costDownOnDraw);
+        }
+      }
     }
   }
 
@@ -2096,7 +2108,7 @@ export class GameEngine {
         upgraded: c.upgraded,
       };
     }
-    const effCost = this.effectiveCost(owner, def);
+    const effCost = this.effectiveCost(owner, def, c);
     const cost = effCost === "X" ? owner.energy : effCost;
     const playable =
       inHand &&
@@ -2314,6 +2326,8 @@ export function describeCard(def: CardDef): string {
   let text = parts.join(". ");
   if (def.dynamicCost === "hp_loss") text += ". Costs 1 less for each time you've lost HP this combat";
   if (def.dynamicCost === "discards") text += ". Costs 1 less for each card discarded this turn";
+  if (def.costDownOnDraw)
+    text += `. Costs ${def.costDownOnDraw} less each time you draw it this combat`;
   if (def.requires === "all_attacks_in_hand") text += ". Play only if all cards in hand are Attacks";
   text += def.exhaust ? ". Exhaust." : ".";
   if (def.onExhaust && def.onExhaust.length) {
