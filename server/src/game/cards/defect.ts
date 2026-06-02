@@ -301,14 +301,15 @@ export const DEFECT_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 2,
     target: "self",
+    // StS2: Gain 6 (9 upgraded) Block. Channel 2 Frost.
     effects: [
-      { kind: "block", amount: 7 },
+      { kind: "block", amount: 6 },
       { kind: "channelOrb", orb: "frost" },
       { kind: "channelOrb", orb: "frost" },
     ],
     upgrade: {
       effects: [
-        { kind: "block", amount: 10 },
+        { kind: "block", amount: 9 },
         { kind: "channelOrb", orb: "frost" },
         { kind: "channelOrb", orb: "frost" },
       ],
@@ -363,13 +364,14 @@ export const DEFECT_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "enemy",
+    // StS2: Deal 7 (10 upgraded) damage. Draw 4 (5) cards.
     effects: [
       { kind: "damage", amount: 7 },
       { kind: "draw", amount: 4 },
     ],
     upgrade: {
       effects: [
-        { kind: "damage", amount: 8 },
+        { kind: "damage", amount: 10 },
         { kind: "draw", amount: 5 },
       ],
     },

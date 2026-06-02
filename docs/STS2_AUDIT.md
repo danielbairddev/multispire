@@ -4,6 +4,13 @@ Comparison of the **current implementation** against **Slay the Spire 2** data
 (slaythespire.wiki.gg `Module:Cards/StS2_data/*`). Goal: make every card its StS2
 variant. This doc is the agreed scope before code changes.
 
+## Decisions (resolved)
+
+- **Audit first**, then reconcile character-by-character. ✅ (this doc)
+- **Co-op vs PvP:** stay PvP for now and **decide ally/all-players cards
+  individually** as we reach them (reinterpret or skip per card).
+- Execution order: Defect → Silent → Ironclad → verify Regent → Necrobinder.
+
 ## Roster (confirmed from the wiki)
 
 StS2 has **5 characters**: Ironclad, Silent, Defect, **Regent**, **Necrobinder**.
