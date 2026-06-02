@@ -835,9 +835,9 @@ export const IRONCLAD_CARDS: CardDef[] = [
     rarity: "rare",
     cost: 0,
     target: "self",
-    // Upgrade in StS adds Innate (draw at combat start), which we don't model, so
-    // this is left non-upgradable rather than faked.
+    // Upgrade makes it Innate (guaranteed in the opening hand).
     effects: [{ kind: "applyPower", power: "brutality", amount: 1, to: "self" }],
+    upgrade: { innate: true },
   },
   {
     id: "fiend_fire",

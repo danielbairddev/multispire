@@ -386,7 +386,8 @@ export class GameEngine {
       if (blades > 0) this.onCardCreated(p, blades);
       // Bombardment and friends auto-play from the Exhaust pile each turn.
       this.autoPlayFromExhaust(p);
-      this.drawCards(p, HAND_SIZE);
+      if (first) this.drawOpeningHand(p);
+      else this.drawCards(p, HAND_SIZE);
       // Queued (Glow / Pale Blue Dot) extra draw, and Tyranny's draw-then-exhaust.
       if (p.nextTurnDraw > 0) {
         this.drawCards(p, p.nextTurnDraw);
@@ -1863,6 +1864,20 @@ export class GameEngine {
     return fromId;
   }
 
+  // The very first hand of the combat. Innate cards are guaranteed to open in
+  // hand: move them to the top of the (already-shuffled) draw pile, then draw at
+  // least that many so they all come up. With <5 Innate cards the rest of a
+  // normal 5-card hand fills in behind them; with more, you draw all of them.
+  private drawOpeningHand(p: InternalPlayer): void {
+    const innate = p.draw.filter((c) => resolveCard(c.id, c.upgraded)?.innate);
+    if (innate.length > 0) {
+      const innateUids = new Set(innate.map((c) => c.uid));
+      p.draw = p.draw.filter((c) => !innateUids.has(c.uid));
+      p.draw.push(...innate); // top of the pile = end of the array
+    }
+    this.drawCards(p, Math.max(HAND_SIZE, innate.length));
+  }
+
   private drawCards(p: InternalPlayer, n: number): void {
     // No Draw (e.g. Battle Trance) blocks any further draws this turn. The fresh
     // start-of-turn hand is drawn before this is ever applied, so it's safe here.
@@ -2338,5 +2353,6 @@ export function describeCard(def: CardDef): string {
   if (def.starCost === -1) text += " Spends all your Star Energy.";
   else if (def.starCost) text += ` Costs ${def.starCost} Star Energy.`;
   if (def.retain) text += " Retain.";
+  if (def.innate) text += " Innate.";
   return text;
 }

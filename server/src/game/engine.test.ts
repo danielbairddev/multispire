@@ -165,7 +165,7 @@ function incomingAmounts(deck: { id: string }[]): number[] {
 }
 
 // --- Helpers for the newer-mechanic tests ---
-type Spec = { id: string };
+type Spec = { id: string; upgraded?: boolean };
 function solo(deckA: Spec[], seed = 11, hp = 200) {
   const g = new GameEngine("solo", seededRng(seed));
   g.addPlayer({ id: "a", name: "A", deck: deckA, maxHp: hp });
@@ -1083,6 +1083,40 @@ const energyOf = (g: GameEngine, id: string) =>
   finishTurn(g);
   // Reshuffled and redrawn on turn 2 -> another -1.
   assert(kkCost() === 2, "Kingly Kick costs 2 after a second draw, got " + kkCost());
+}
+
+// --- Innate: a flagged card always opens in the starting hand ---
+{
+  const filler = (n: number) => Array.from({ length: n }, () => ({ id: "strike_r" }));
+  // A 10-card deck with one Innate card: it must open in hand on every seed,
+  // and the opening hand is still the usual 5 cards.
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const g = solo([{ id: "backstab" }, ...filler(9)], seed);
+    const hand = handOf(g, "a");
+    assert(hand.some((c) => c.id === "backstab"), `Innate Backstab opens in hand (seed ${seed})`);
+    assert(hand.length === 5, `opening hand is 5 with one Innate (seed ${seed}), got ${hand.length}`);
+  }
+}
+
+// --- Innate: more Innate cards than the hand size all come up ---
+{
+  const filler = Array.from({ length: 4 }, () => ({ id: "strike_r" }));
+  const innates = Array.from({ length: 6 }, () => ({ id: "backstab" }));
+  const g = solo([...innates, ...filler], 7);
+  const hand = handOf(g, "a");
+  const bs = hand.filter((c) => c.id === "backstab").length;
+  assert(bs === 6, "all 6 Innate cards open in hand, got " + bs);
+  assert(hand.length === 6, "hand exceeds 5 when Innate count exceeds hand size, got " + hand.length);
+}
+
+// --- Innate granted by an upgrade: the upgraded form opens in hand ---
+{
+  const filler = Array.from({ length: 9 }, () => ({ id: "strike_r" }));
+  const g = solo([{ id: "infinite_blades", upgraded: true }, ...filler], 3);
+  assert(
+    handOf(g, "a").some((c) => c.id === "infinite_blades"),
+    "Upgraded Infinite Blades is Innate and opens in hand",
+  );
 }
 
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

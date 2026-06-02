@@ -5,9 +5,9 @@ import type { CardDef } from "@multispire/shared";
 // signature systems are Poison (a stacking debuff that ticks each turn), Shivs
 // (0-cost token Attacks generated in combat), and discard synergy.
 //
-// Cards whose real behavior needs systems we don't simulate (innate draw order,
-// per-discard cost scaling, draw-pile inspection, etc.) are marked `approx: true`
-// so the UI shows them as not-yet-supported rather than playing a wrong model.
+// Cards whose real behavior needs systems we don't simulate (draw-pile
+// inspection, etc.) are marked `approx: true` so the UI shows them as
+// not-yet-supported rather than playing a wrong model.
 //
 // To add a card: append a CardDef here. The registry picks it up automatically.
 
@@ -407,7 +407,7 @@ export const SILENT_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 0,
     target: "enemy",
-    // (Innate draw-order isn't modeled; the damage + Exhaust are faithful.)
+    innate: true,
     exhaust: true,
     effects: [{ kind: "damage", amount: 11 }],
     upgrade: { effects: [{ kind: "damage", amount: 15 }] },
@@ -582,8 +582,9 @@ export const SILENT_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "self",
-    // (Upgrade makes it Innate; draw-order isn't modeled, so the effect is unchanged.)
+    // Upgrade makes it Innate (guaranteed in the opening hand).
     effects: [{ kind: "applyPower", power: "infinite_blades", amount: 1, to: "self" }],
+    upgrade: { innate: true },
   },
   {
     id: "leg_sweep",
@@ -699,8 +700,9 @@ export const SILENT_CARDS: CardDef[] = [
     rarity: "rare",
     cost: 1,
     target: "self",
-    // (Upgrade makes it Innate; draw-order isn't modeled, so the effect is unchanged.)
+    // Upgrade makes it Innate (guaranteed in the opening hand).
     effects: [{ kind: "applyPower", power: "after_image", amount: 1, to: "self" }],
+    upgrade: { innate: true },
   },
   {
     id: "a_thousand_cuts",

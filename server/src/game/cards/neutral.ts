@@ -76,7 +76,7 @@ export const NEUTRAL_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 0,
     target: "all_enemies",
-    // Innate is not modeled; otherwise faithful.
+    innate: true,
     exhaust: true,
     effects: [{ kind: "damage", amount: 8 }],
     upgrade: { effects: [{ kind: "damage", amount: 12 }] },

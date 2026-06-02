@@ -999,6 +999,7 @@ export const REGENT_CARDS: CardDef[] = [
     rarity: "rare",
     cost: 1,
     target: "self",
+    innate: true,
     effects: [{ kind: "applyPower", power: "arsenal", amount: 1, to: "self" }],
   },
   {

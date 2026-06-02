@@ -165,6 +165,8 @@ export interface CardDef {
   starCost?: number;
   /** Retain: not discarded at end of turn; kept in hand (e.g. Sovereign Blade). */
   retain?: boolean;
+  /** Innate: guaranteed to start in your opening hand at the beginning of combat. */
+  innate?: boolean;
   /** After being played, shuffle back into the draw pile instead of discarding
    *  (the Sovereign Blade cycles through the deck after each use). */
   reshuffleOnPlay?: boolean;
@@ -192,7 +194,7 @@ export interface CardDef {
   approx?: boolean;
   /** Optional upgraded form, swapped in when the instance is upgraded. */
   upgrade?: Partial<
-    Pick<CardDef, "name" | "cost" | "effects" | "exhaust" | "ethereal" | "onExhaust" | "starCost" | "retain">
+    Pick<CardDef, "name" | "cost" | "effects" | "exhaust" | "ethereal" | "onExhaust" | "starCost" | "retain" | "innate">
   >;
 }
 
