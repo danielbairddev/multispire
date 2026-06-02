@@ -1119,4 +1119,58 @@ const energyOf = (g: GameEngine, id: string) =>
   );
 }
 
+// --- Quasar: Discover (pick 1 of 3) a Colorless card into hand ---
+{
+  const g = regentSolo([
+    { id: "quasar" }, // cost 0, starCost 2
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  ensure(g, "a");
+  assert(play(g, "a", "quasar") === null, "Quasar plays");
+  const pc = g.viewFor("a").pendingChoice;
+  assert(pc != null && pc.cards.length === 3, "Quasar offers 3 Discover options, got " + (pc?.cards.length ?? 0));
+  assert(pc!.pick === 1, "Quasar Discover picks 1");
+  assert(pc!.cards.every((c) => c.type !== "status" && c.type !== "curse"), "Discover options are playable cards");
+  const chosen = pc!.cards[0];
+  assert(g.resolveChoice("a", [chosen.uid]) === null, "resolve the Discover");
+  assert(g.viewFor("a").pendingChoice == null, "Discover choice cleared");
+  assert(handOf(g, "a").some((c) => c.id === chosen.id), "the discovered card is now in hand");
+}
+
+// --- Kingly Punch: grows its damage by 4 each time it's drawn ---
+{
+  const g = regentSolo([
+    { id: "kingly_punch" }, // 8 base, +4 per draw
+    { id: "strike_reg" },
+    { id: "defend_reg" },
+    { id: "venerate" },
+    { id: "cloak_of_stars" },
+  ]);
+  const before = hpOf(g, "b");
+  assert(play(g, "a", "kingly_punch", "b") === null, "Kingly Punch plays (turn 1)");
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 12, "Kingly Punch deals 8+4 after one draw, got " + (before - hpOf(g, "b")));
+  // Turn 2: reshuffled and redrawn -> +4 again, so 8 + 8 = 16.
+  const before2 = hpOf(g, "b");
+  assert(play(g, "a", "kingly_punch", "b") === null, "Kingly Punch plays (turn 2)");
+  finishTurn(g);
+  assert(before2 - hpOf(g, "b") === 16, "Kingly Punch grew to 8+8 on second draw, got " + (before2 - hpOf(g, "b")));
+}
+
+// --- I Am Invincible: auto-plays from the top of the draw pile at end of turn ---
+{
+  // A deck made entirely of I Am Invincible: the opening hand takes 5, leaving 2
+  // on top of the draw pile, which both auto-play for Block at end of turn.
+  const g = regentSolo(
+    Array.from({ length: 7 }, () => ({ id: "i_am_invincible" })),
+    7,
+  );
+  assert(blockOf(g, "a") === 0, "no Block before end-of-turn autoplay");
+  finishTurn(g);
+  assert(blockOf(g, "a") === 20, "two I Am Invincible auto-played for 20 Block, got " + blockOf(g, "a"));
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

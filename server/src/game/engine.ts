@@ -147,11 +147,12 @@ type ChoiceKind =
   | "exhaustChosen"
   | "replaySkill"
   | "discardChosen"
-  | "duplicateChosen";
+  | "duplicateChosen"
+  | "discover";
 interface PendingChoice {
   playerId: string;
   kind: ChoiceKind;
-  source: "hand" | "discard";
+  source: "hand" | "discard" | "discover";
   prompt: string;
   pick: number;
   // Continuation: the rest of the played card's effects, and its context.
@@ -164,6 +165,9 @@ interface PendingChoice {
   replayTimes?: number;
   // duplicateChosen only: how many copies to add of the chosen card.
   dupAmount?: number;
+  // discover only: the generated options, and where the chosen card goes.
+  options?: CardInstance[];
+  discoverPile?: "draw" | "hand";
 }
 
 export interface PlayerSeed {
@@ -198,6 +202,9 @@ export class GameEngine {
   // Kingly Kick: per-card-instance cost reduction accumulated as the card is
   // drawn over this combat, keyed by the card instance uid.
   private costReduction = new Map<string, number>();
+  // Kingly Punch: per-card-instance bonus damage accumulated as the card is
+  // drawn over this combat, keyed by the card instance uid.
+  private drawDamageBonus = new Map<string, number>();
   // A card-selection the engine is paused on (Headbutt, Warcry, Burning Pact).
   // While set, no other play/pass is accepted until the chooser resolves it.
   private pendingChoice: PendingChoice | null = null;
@@ -803,6 +810,12 @@ export class GameEngine {
       p.powers.delete("reflect");
       this.decayPowers(p);
     }
+    // I Am Invincible: at the end of the turn, auto-play any such card sitting on
+    // top of the draw pile. Done after Block is cleared so the Block it grants
+    // carries into the next turn's incoming attacks.
+    for (const p of this.players.values()) {
+      if (p.alive) this.autoPlayFromDrawTop(p);
+    }
     this.resolutionData = null;
     this.resolutionAcks.clear();
     this.phase = "action";
@@ -846,7 +859,8 @@ export class GameEngine {
         | "exhaustChosen"
         | "replayChosenSkill"
         | "discard"
-        | "duplicateChosen";
+        | "duplicateChosen"
+        | "discover";
     }
   > {
     // A player-chosen discard pauses; a random discard resolves immediately.
@@ -856,7 +870,8 @@ export class GameEngine {
       eff.kind === "putHandOnDraw" ||
       eff.kind === "exhaustChosen" ||
       eff.kind === "replayChosenSkill" ||
-      eff.kind === "duplicateChosen"
+      eff.kind === "duplicateChosen" ||
+      eff.kind === "discover"
     );
   }
 
@@ -884,6 +899,10 @@ export class GameEngine {
     instUid?: string,
   ): boolean {
     if (!this.isChoiceEffect(eff)) return false;
+    // Discover is special: the options are generated, not taken from a pile.
+    if (eff.kind === "discover") {
+      return this.beginDiscover(eff, source, targets, def, remaining, instUid);
+    }
     const kind: ChoiceKind =
       eff.kind === "replayChosenSkill" ? "replaySkill" : eff.kind === "discard" ? "discardChosen" : eff.kind;
     const replayTimes = eff.kind === "replayChosenSkill" ? eff.times : undefined;
@@ -928,6 +947,67 @@ export class GameEngine {
     return true;
   }
 
+  // Begin a Discover: generate `amount` distinct random cards from the pool and
+  // pause for the player to pick `pick` of them (added to `pile`). If the pool is
+  // small, generate as many distinct cards as it allows; if there's nothing to
+  // pick from, skip silently.
+  private beginDiscover(
+    eff: Extract<Effect, { kind: "discover" }>,
+    source: InternalPlayer,
+    targets: string[],
+    def: CardDef,
+    remaining: Effect[],
+    instUid?: string,
+  ): boolean {
+    const want = eff.amount ?? 3;
+    const pick = eff.pick ?? 1;
+    const pile = eff.pile ?? "hand";
+    const pool = cardsForCharacter(eff.character).slice();
+    if (pool.length === 0) return false;
+    // Draw distinct cards from the pool (without replacement) for the options.
+    const options: CardInstance[] = [];
+    const chosenIds = new Set<string>();
+    let guard = 0;
+    while (options.length < want && chosenIds.size < pool.length && guard++ < 200) {
+      const cand = pool[Math.floor(this.rng() * pool.length)];
+      if (chosenIds.has(cand.id)) continue;
+      chosenIds.add(cand.id);
+      options.push({ uid: uid("disc"), id: cand.id, upgraded: false });
+    }
+    if (options.length === 0) return false;
+    const effectivePick = Math.min(pick, options.length);
+    if (options.length <= effectivePick) {
+      // No real choice (pool too small) — add them all and continue.
+      this.discoverAdd(source, options, pile);
+      return false;
+    }
+    this.pendingChoice = {
+      playerId: source.id,
+      kind: "discover",
+      source: "discover",
+      prompt: `Discover a card${pile === "draw" ? " (to the top of your draw pile)" : ""}`,
+      pick: effectivePick,
+      remaining,
+      effSource: source,
+      targets,
+      def,
+      instUid,
+      options,
+      discoverPile: pile,
+    };
+    return true;
+  }
+
+  // Add the discovered (chosen) cards to the destination pile.
+  private discoverAdd(p: InternalPlayer, cards: CardInstance[], pile: "draw" | "hand"): void {
+    const dest = pile === "draw" ? p.draw : p.hand;
+    for (const c of cards) dest.push(c);
+    this.onCardCreated(p, cards.length);
+    const names = cards.map((c) => resolveCard(c.id, c.upgraded)?.name ?? c.id).join(", ");
+    const where = pile === "draw" ? "the top of their draw pile" : "their hand";
+    this.pushLog(`✦ ${p.name} discovers ${names} to ${where}.`);
+  }
+
   private choicePrompt(kind: ChoiceKind, pick: number): string {
     const n = pick > 1 ? `${pick} cards` : "a card";
     switch (kind) {
@@ -943,6 +1023,8 @@ export class GameEngine {
         return `Choose a Skill to play again`;
       case "duplicateChosen":
         return `Choose a card to copy into your hand`;
+      case "discover":
+        return `Discover a card`;
     }
   }
 
@@ -1012,12 +1094,19 @@ export class GameEngine {
     const pc = this.pendingChoice;
     if (!pc) return "No card selection is pending.";
     if (pc.playerId !== playerId) return "It is not your selection to make.";
-    const pile = pc.source === "discard" ? pc.effSource.discard : pc.effSource.hand;
-    const valid = [...new Set(uids)].filter((u) => pile.some((c) => c.uid === u));
+    // Discover validates against the generated options, not a pile.
+    const candidatePool =
+      pc.source === "discover" ? pc.options ?? [] : pc.source === "discard" ? pc.effSource.discard : pc.effSource.hand;
+    const valid = [...new Set(uids)].filter((u) => candidatePool.some((c) => c.uid === u));
     if (valid.length !== pc.pick) return `Choose exactly ${pc.pick} card${pc.pick > 1 ? "s" : ""}.`;
     const { kind, effSource, remaining, targets, def, instUid, replayTimes, dupAmount } = pc;
     this.pendingChoice = null;
-    this.performChoice(kind, effSource, valid, replayTimes, dupAmount);
+    if (kind === "discover") {
+      const picked = (pc.options ?? []).filter((c) => valid.includes(c.uid));
+      this.discoverAdd(effSource, picked, pc.discoverPile ?? "hand");
+    } else {
+      this.performChoice(kind, effSource, valid, replayTimes, dupAmount);
+    }
     // Continue the rest of the played card's effects (which may pause again).
     const paused = this.applyEffectList(remaining, effSource, targets, def, instUid);
     if (paused) return null;
@@ -1059,8 +1148,10 @@ export class GameEngine {
         if (vigor > 0) source.powers.delete("vigor");
         // Accuracy: Shivs deal extra damage.
         const accuracyBonus = def.id === "shiv" ? (source.powers.get("accuracy") ?? 0) : 0;
+        // Kingly Punch: this instance has grown each time it was drawn this combat.
+        const drawBonus = instUid ? this.drawDamageBonus.get(instUid) ?? 0 : 0;
         const base =
-          eff.amount + strikeBonus + rampageBonus + starCardBonus + skillBonus + starGainBonus + createdBonus + vigor + accuracyBonus;
+          eff.amount + strikeBonus + rampageBonus + starCardBonus + skillBonus + starGainBonus + createdBonus + vigor + accuracyBonus + drawBonus;
         // Monarch's Gaze: attacking an enemy saps 1 Strength from it this turn.
         const gaze = source.powers.get("monarchs_gaze") ?? 0;
         for (const tid of targets) {
@@ -1487,6 +1578,7 @@ export class GameEngine {
       case "exhaustChosen":
       case "replayChosenSkill":
       case "duplicateChosen":
+      case "discover":
         // Interactive choices are intercepted by applyEffectList before reaching
         // here. (Only reached if nested in onExhaust/ifTargetHasPower, which our
         // cards avoid; treated as a no-op rather than pausing in those contexts.)
@@ -1650,6 +1742,34 @@ export class GameEngine {
 
   // Bombardment: cards with `autoPlayFromExhaust` re-fire from the Exhaust pile at
   // the start of each of the owner's turns. Attacks pick a random living enemy.
+  // I Am Invincible: at the end of the turn, while a card flagged
+  // `playFromDrawIfTop` sits on top of the draw pile, play it (resolve its
+  // effects, then discard or Exhaust it). The loop handles multiple stacked
+  // copies that bubble up as each is removed.
+  private autoPlayFromDrawTop(p: InternalPlayer): void {
+    let guard = 0;
+    while (guard++ < 50) {
+      const top = p.draw[p.draw.length - 1];
+      if (!top) break;
+      const d = resolveCard(top.id, top.upgraded);
+      if (!d?.playFromDrawIfTop) break;
+      p.draw.pop();
+      let targets: string[] = [];
+      if (d.target === "enemy") {
+        const enemies = this.aliveEnemies(p.id);
+        targets = enemies.length ? [enemies[Math.floor(this.rng() * enemies.length)]] : [];
+      } else if (d.target === "all_enemies") {
+        targets = this.aliveEnemies(p.id);
+      } else if (d.target === "self") {
+        targets = [p.id];
+      }
+      this.pushLog(`✦ ${p.name}'s ${d.name} plays itself from the top of the draw pile.`);
+      for (const e of d.effects) this.applyEffect(e, p, targets, d, top.uid);
+      if (d.exhaust) this.exhaustCard(p, top);
+      else p.discard.push(top);
+    }
+  }
+
   private autoPlayFromExhaust(p: InternalPlayer): void {
     for (const c of p.exhaust) {
       const d = resolveCard(c.id, c.upgraded);
@@ -1892,10 +2012,13 @@ export class GameEngine {
       const c = p.draw.pop();
       if (c) {
         p.hand.push(c);
-        // Kingly Kick and friends get permanently cheaper each time they're drawn.
+        // Kingly Kick / Kingly Punch change permanently each time they're drawn.
         const def = resolveCard(c.id, c.upgraded);
         if (def?.costDownOnDraw) {
           this.costReduction.set(c.uid, (this.costReduction.get(c.uid) ?? 0) + def.costDownOnDraw);
+        }
+        if (def?.damageUpOnDraw) {
+          this.drawDamageBonus.set(c.uid, (this.drawDamageBonus.get(c.uid) ?? 0) + def.damageUpOnDraw);
         }
       }
     }
@@ -1997,13 +2120,16 @@ export class GameEngine {
     let pendingChoice: PendingChoiceView | null = null;
     if (this.pendingChoice && this.pendingChoice.playerId === viewerId) {
       const pc = this.pendingChoice;
-      // replaySkill offers only the eligible skills, not the whole hand.
+      // replaySkill offers only the eligible skills; discover offers the freshly
+      // generated options; otherwise it's a pile (hand or discard).
       const pile =
-        pc.kind === "replaySkill"
-          ? this.replayableSkills(pc.effSource)
-          : pc.source === "discard"
-            ? pc.effSource.discard
-            : pc.effSource.hand;
+        pc.kind === "discover"
+          ? pc.options ?? []
+          : pc.kind === "replaySkill"
+            ? this.replayableSkills(pc.effSource)
+            : pc.source === "discard"
+              ? pc.effSource.discard
+              : pc.effSource.hand;
       pendingChoice = {
         prompt: pc.prompt,
         source: pc.source,
@@ -2301,6 +2427,13 @@ export function describeCard(def: CardDef): string {
         parts.push(`Add ${e.amount} random ${pool} card${e.amount > 1 ? "s" : ""} to your ${e.pile}`);
         break;
       }
+      case "discover": {
+        const pool = e.character === "neutral" ? "Colorless" : e.character;
+        const of = e.amount ?? 3;
+        const pile = (e.pile ?? "hand") === "draw" ? "the top of your draw pile" : "your hand";
+        parts.push(`Discover a ${pool} card (choose 1 of ${of}) and add it to ${pile}`);
+        break;
+      }
       case "fillHandWith": {
         const name = resolveCard(e.cardId, false)?.name ?? e.cardId;
         parts.push(`Fill your hand with ${name}`);
@@ -2343,6 +2476,8 @@ export function describeCard(def: CardDef): string {
   if (def.dynamicCost === "discards") text += ". Costs 1 less for each card discarded this turn";
   if (def.costDownOnDraw)
     text += `. Costs ${def.costDownOnDraw} less each time you draw it this combat`;
+  if (def.damageUpOnDraw)
+    text += `. Whenever you draw this card, increase its damage by ${def.damageUpOnDraw} this combat`;
   if (def.requires === "all_attacks_in_hand") text += ". Play only if all cards in hand are Attacks";
   text += def.exhaust ? ". Exhaust." : ".";
   if (def.onExhaust && def.onExhaust.length) {
@@ -2354,5 +2489,6 @@ export function describeCard(def: CardDef): string {
   else if (def.starCost) text += ` Costs ${def.starCost} Star Energy.`;
   if (def.retain) text += " Retain.";
   if (def.innate) text += " Innate.";
+  if (def.playFromDrawIfTop) text += " At end of turn, if on top of your draw pile, play it.";
   return text;
 }

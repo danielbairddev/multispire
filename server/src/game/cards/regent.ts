@@ -678,10 +678,10 @@ export const REGENT_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "enemy",
-    // Real card: grows its damage each time you draw it. Not yet modeled.
-    approx: true,
+    // Grows its damage by 4 every time you draw it this combat (+6 upgraded).
+    damageUpOnDraw: 4,
     effects: [{ kind: "damage", amount: 8 }],
-    upgrade: { effects: [{ kind: "damage", amount: 10 }] },
+    upgrade: { effects: [{ kind: "damage", amount: 10 }], damageUpOnDraw: 6 },
   },
   {
     id: "knockout_blow",
@@ -833,10 +833,8 @@ export const REGENT_CARDS: CardDef[] = [
     cost: 0,
     starCost: 2,
     target: "none",
-    // Real card: Discover (choose 1 of 3) a random Colorless card. Not yet modeled;
-    // we add a single random one instead.
-    approx: true,
-    effects: [{ kind: "addRandomCards", character: "neutral", amount: 1, pile: "hand" }],
+    // Discover (choose 1 of 3) a random Colorless card, added to your hand.
+    effects: [{ kind: "discover", character: "neutral", amount: 3, pick: 1, pile: "hand" }],
   },
   {
     id: "radiate",
@@ -1234,8 +1232,8 @@ export const REGENT_CARDS: CardDef[] = [
     rarity: "rare",
     cost: 1,
     target: "self",
-    // Real card: auto-plays from the top of the draw pile at end of turn. Not yet modeled.
-    approx: true,
+    // At the end of your turn, if this is on top of your draw pile, it plays itself.
+    playFromDrawIfTop: true,
     effects: [{ kind: "block", amount: 10 }],
     upgrade: { effects: [{ kind: "block", amount: 13 }] },
   },

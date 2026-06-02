@@ -215,8 +215,9 @@ export interface ResolutionView {
 export interface PendingChoiceView {
   /** Human prompt, e.g. "Choose a card to Exhaust". */
   prompt: string;
-  /** Which pile the eligible cards come from (for the heading). */
-  source: "hand" | "discard";
+  /** Which pile the eligible cards come from (for the heading). "discover" means
+   *  the cards are freshly generated options, not drawn from an existing pile. */
+  source: "hand" | "discard" | "discover";
   /** How many cards must be picked. */
   pick: number;
   /** The eligible cards to choose among. */

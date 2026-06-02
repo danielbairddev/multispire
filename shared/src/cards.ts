@@ -105,6 +105,10 @@ export type Effect =
   // Add `amount` random cards of a given character/pool to a pile (e.g. Bundle of
   // Joy adds 3 random Colorless cards to hand).
   | { kind: "addRandomCards"; character: Character; amount: number; pile: "discard" | "draw" | "hand" }
+  // Discover: generate `amount` (default 3) random distinct cards from a pool and
+  // let the player choose `pick` (default 1) to add to a pile (e.g. Quasar
+  // discovers a Colorless card). The engine pauses for the pick.
+  | { kind: "discover"; character: Character; amount?: number; pick?: number; pile?: "draw" | "hand" }
   // Add copies of `cardId` to hand until the hand is full (e.g. Crash Landing's
   // "Fill your hand with Debris").
   | { kind: "fillHandWith"; cardId: string }
@@ -173,6 +177,9 @@ export interface CardDef {
   /** While in the Exhaust pile, auto-plays its effects at the start of each of
    *  the owner's turns (e.g. Bombardment). Implies the card Exhausts. */
   autoPlayFromExhaust?: boolean;
+  /** At the end of the owner's turn, if this card is on top of the draw pile, it
+   *  plays itself automatically (e.g. I Am Invincible). */
+  playFromDrawIfTop?: boolean;
   /** A play restriction the engine enforces (e.g. Clash needs an all-attack hand). */
   requires?: "all_attacks_in_hand";
   /**
@@ -187,6 +194,11 @@ export interface CardDef {
    */
   costDownOnDraw?: number;
   /**
+   * Permanently raises this card instance's Attack damage by this much every time
+   * it is drawn this combat (e.g. Kingly Punch: +4 per draw). Tracked per instance.
+   */
+  damageUpOnDraw?: number;
+  /**
    * Marks a card whose real behavior is only partially modeled. When approximated
    * cards are disabled (the default), these are shown as "not yet supported" and
    * can't be added to a build or played.
@@ -194,7 +206,20 @@ export interface CardDef {
   approx?: boolean;
   /** Optional upgraded form, swapped in when the instance is upgraded. */
   upgrade?: Partial<
-    Pick<CardDef, "name" | "cost" | "effects" | "exhaust" | "ethereal" | "onExhaust" | "starCost" | "retain" | "innate">
+    Pick<
+      CardDef,
+      | "name"
+      | "cost"
+      | "effects"
+      | "exhaust"
+      | "ethereal"
+      | "onExhaust"
+      | "starCost"
+      | "retain"
+      | "innate"
+      | "costDownOnDraw"
+      | "damageUpOnDraw"
+    >
   >;
 }
 
