@@ -83,6 +83,26 @@ export const POWERS: Record<string, PowerDef> = {
   reflect: { id: "reflect", name: "Reflect", kind: "buff" },
   // Orbit: refund 1 Energy for every 4 total Energy you spend this combat.
   orbit: { id: "orbit", name: "Orbit", kind: "buff" },
+  // --- Silent powers ---
+  // Poison: lose HP equal to the stacks at the start of your turn, then it drops by 1.
+  // Decrement is handled specially (after dealing its damage), not via decaysPerTurn.
+  poison: { id: "poison", name: "Poison", kind: "debuff" },
+  // Noxious Fumes: apply N Poison to all enemies at the start of your turn.
+  noxious_fumes: { id: "noxious_fumes", name: "Noxious Fumes", kind: "buff" },
+  // Infinite Blades: add N Shivs to your hand at the start of your turn.
+  infinite_blades: { id: "infinite_blades", name: "Infinite Blades", kind: "buff" },
+  // A Thousand Cuts: deal N damage to all enemies whenever you play a card.
+  thousand_cuts: { id: "thousand_cuts", name: "A Thousand Cuts", kind: "buff" },
+  // After Image: gain N Block whenever you play a card.
+  after_image: { id: "after_image", name: "After Image", kind: "buff" },
+  // Envenom: apply N Poison whenever you deal unblocked attack damage.
+  envenom: { id: "envenom", name: "Envenom", kind: "buff" },
+  // Accuracy: your Shivs deal N additional damage.
+  accuracy: { id: "accuracy", name: "Accuracy", kind: "buff" },
+  // Wraith Form: lose N Dexterity at the start of each of your turns.
+  wraith_form: { id: "wraith_form", name: "Wraith Form", kind: "buff" },
+  // Corpse Explosion: when this target dies, deal its Max HP (×N) to all enemies.
+  corpse_explosion: { id: "corpse_explosion", name: "Corpse Explosion", kind: "debuff" },
 };
 
 export function getPower(id: PowerId): PowerDef {

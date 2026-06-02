@@ -3,9 +3,10 @@ import { reportMissing } from "../missing.js";
 import { IRONCLAD_CARDS } from "./ironclad.js";
 import { NEUTRAL_CARDS } from "./neutral.js";
 import { REGENT_CARDS } from "./regent.js";
+import { SILENT_CARDS } from "./silent.js";
 
 // All known cards, indexed by id. Future characters register their arrays here.
-const ALL: CardDef[] = [...IRONCLAD_CARDS, ...NEUTRAL_CARDS, ...REGENT_CARDS];
+const ALL: CardDef[] = [...IRONCLAD_CARDS, ...NEUTRAL_CARDS, ...REGENT_CARDS, ...SILENT_CARDS];
 
 /**
  * Whether cards whose real behavior is only partially modeled (`approx: true`)
@@ -130,6 +131,35 @@ const CARD_ALIASES: Record<string, string> = {
   voidform: "void_form",
   meteorshower: "meteor_shower",
   thesealedthrone: "the_sealed_throne",
+  // ---- Silent ----
+  strikeg: "strike_g",
+  defendg: "defend_g",
+  daggerspray: "dagger_spray",
+  daggerthrow: "dagger_throw",
+  deadlypoison: "deadly_poison",
+  poisonedstab: "poisoned_stab",
+  quickslash: "quick_slash",
+  suckerpunch: "sucker_punch",
+  cloakanddagger: "cloak_and_dagger",
+  dodgeandroll: "dodge_and_roll",
+  flyingknee: "flying_knee",
+  bladedance: "blade_dance",
+  alloutattack: "all_out_attack",
+  bouncingflask: "bouncing_flask",
+  calculatedgamble: "calculated_gamble",
+  cripplingcloud: "crippling_cloud",
+  heelhook: "heel_hook",
+  infiniteblades: "infinite_blades",
+  legsweep: "leg_sweep",
+  noxiousfumes: "noxious_fumes",
+  riddlewithholes: "riddle_with_holes",
+  afterimage: "after_image",
+  athousandcuts: "a_thousand_cuts",
+  diediedie: "die_die_die",
+  grandfinale: "grand_finale",
+  glassknife: "glass_knife",
+  wraithform: "wraith_form",
+  corpseexplosion: "corpse_explosion",
 };
 
 /**

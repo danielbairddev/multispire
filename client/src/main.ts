@@ -27,6 +27,8 @@ const app = document.getElementById("app")!;
 interface BuilderState {
   name: string;
   maxHp: string;
+  // Chosen hero/character to filter the catalog by ("" = unset, show all).
+  hero: string;
   relics: string[];
   query: string;
   relicQuery: string;
@@ -64,7 +66,7 @@ interface UIState {
 }
 
 function emptyBuilder(): BuilderState {
-  return { name: "", maxHp: "", relics: [], query: "", relicQuery: "", entries: [] };
+  return { name: "", maxHp: "", hero: "", relics: [], query: "", relicQuery: "", entries: [] };
 }
 
 // --- persistence: remember the player's name and previously-used decklists ---
@@ -286,6 +288,7 @@ async function openDeckbuilder(): Promise<void> {
     ui.builder = {
       name: ui.deckDraft.name ?? "",
       maxHp: ui.deckDraft.maxHp != null ? String(ui.deckDraft.maxHp) : "",
+      hero: ui.deckDraft.character ?? "",
       relics: [...(ui.deckDraft.relics ?? [])],
       query: "",
       relicQuery: "",
@@ -343,6 +346,7 @@ function builderToLoadout(): Loadout {
   return {
     name: b.name.trim() || undefined,
     maxHp: Number.isFinite(maxHpNum) ? maxHpNum : undefined,
+    ...(b.hero ? { character: b.hero } : {}),
     relics: [...b.relics],
     deck,
   };
@@ -731,6 +735,11 @@ function renderDeckbuilder(): void {
         </div>
         <div class="builder-meta">
           <label>Name <input id="bname" value="${escape(b.name)}" placeholder="Ironclad" /></label>
+          <label>Hero
+            <select id="bhero">
+              ${heroOptions(b.hero)}
+            </select>
+          </label>
           <label>Max HP
             <span class="hpadjust">
               <button id="hpdown" class="ghost" title="−5">−</button>
@@ -780,6 +789,11 @@ function renderDeckbuilder(): void {
   // Text fields update state without a full re-render so focus is preserved.
   const bname = wrap.querySelector("#bname") as HTMLInputElement;
   bname.addEventListener("input", () => (b.name = bname.value));
+  const bhero = wrap.querySelector("#bhero") as HTMLSelectElement;
+  bhero.addEventListener("change", () => {
+    b.hero = bhero.value;
+    renderCatalogList(catalogList);
+  });
   const bhp = wrap.querySelector("#bhp") as HTMLInputElement;
   bhp.addEventListener("input", () => (b.maxHp = bhp.value));
   const bumpHp = (delta: number) => {
@@ -880,11 +894,35 @@ function renderRelicChips(container: HTMLElement): void {
   }
 }
 
+// Pretty labels for the hero dropdown. Unset shows every card.
+const HERO_LABELS: Record<string, string> = {
+  ironclad: "Ironclad",
+  silent: "Silent",
+  regent: "Regent",
+  defect: "Defect",
+  watcher: "Watcher",
+};
+
+// Build the <option> list for the hero selector from the characters actually
+// present in the catalog (plus an "Any hero" unset option).
+function heroOptions(selected: string): string {
+  const present = new Set<string>((ui.catalog ?? []).map((c) => c.character).filter((ch) => ch !== "neutral"));
+  const order = ["ironclad", "silent", "regent", "defect", "watcher"];
+  const heroes = order.filter((h) => present.has(h));
+  const opt = (val: string, label: string) =>
+    `<option value="${val}" ${selected === val ? "selected" : ""}>${label}</option>`;
+  return [opt("", "Any hero"), ...heroes.map((h) => opt(h, HERO_LABELS[h] ?? h))].join("");
+}
+
 function renderCatalogList(container: HTMLElement): void {
   container.innerHTML = "";
   const q = ui.builder.query.trim().toLowerCase();
+  const hero = ui.builder.hero;
   const cards = (ui.catalog ?? []).filter(
-    (c) => !q || c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q),
+    (c) =>
+      // When a hero is set, show that hero's cards plus Colorless/Neutral; unset shows all.
+      (!hero || c.character === hero || c.character === "neutral") &&
+      (!q || c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)),
   );
   if (!cards.length) {
     container.appendChild(el(`<p class="muted small">No cards match “${escape(ui.builder.query)}”.</p>`));

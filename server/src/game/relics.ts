@@ -68,6 +68,12 @@ export const RELICS: Record<string, RelicHooks> = {
     description: "Regent starter. Start each combat with 6 Star Energy.",
     startingStars: 6,
   },
+  ring_of_the_snake: {
+    id: "ring_of_the_snake",
+    name: "Ring of the Snake",
+    description: "Silent starter. Draw 2 additional cards on your first turn.",
+    bonusDrawFirstTurn: 2,
+  },
 
   // ---- Regent relics ----
   fencing_manual: {
@@ -238,6 +244,7 @@ const RELIC_ALIASES: Record<string, string> = {
   leeswaffle: "lees_waffle",
   // ---- Regent ----
   divineright: "divine_right",
+  ringofthesnake: "ring_of_the_snake",
   divinedestiny: "divine_destiny",
   fencingmanual: "fencing_manual",
   galacticdust: "galactic_dust",

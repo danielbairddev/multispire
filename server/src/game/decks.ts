@@ -52,6 +52,40 @@ export function regentDemoDeck(): DeckList {
   ];
 }
 
+// The Silent's starting deck (Slay the Spire): 5 Strike, 5 Defend, Neutralize,
+// Survivor. Pair with the Ring of the Snake relic for the extra opening draw.
+export function silentStarterDeck(): DeckList {
+  return [
+    ...Array.from({ length: 5 }, () => ({ id: "strike_g" })),
+    ...Array.from({ length: 5 }, () => ({ id: "defend_g" })),
+    { id: "neutralize" },
+    { id: "survivor" },
+  ];
+}
+
+// A rounded ~20-card Silent demo build: a Poison engine (Noxious Fumes, Deadly
+// Poison, Bane), some Shiv generation, knives, and a couple of scaling powers.
+export function silentDemoDeck(): DeckList {
+  return [
+    ...Array.from({ length: 4 }, () => ({ id: "strike_g" })),
+    ...Array.from({ length: 3 }, () => ({ id: "defend_g" })),
+    { id: "neutralize" },
+    { id: "survivor" },
+    { id: "deadly_poison" },
+    { id: "poisoned_stab" },
+    { id: "bane" },
+    { id: "dagger_throw" },
+    { id: "blade_dance" },
+    { id: "quick_slash" },
+    { id: "sucker_punch" },
+    { id: "footwork" },
+    { id: "noxious_fumes", upgraded: true },
+    { id: "caltrops" },
+    { id: "a_thousand_cuts" },
+    { id: "envenom" },
+  ];
+}
+
 // The default deck everyone gets if they press Play without importing a loadout.
 // A rounded ~20-card Ironclad build: reliable damage, enough block to survive a
 // few turns, a couple of debuff/scaling options, and one power so games have an

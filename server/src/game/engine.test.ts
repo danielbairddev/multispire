@@ -802,4 +802,225 @@ const energyOf = (g: GameEngine, id: string) =>
   assert(hpOf(g, "b") === bBefore - 15, "Stardust: 3 hits of 5 = 15 (got " + (bBefore - hpOf(g, "b")) + ")");
 }
 
+// =====================================================================
+// Silent mechanics
+// =====================================================================
+
+// --- Poison: deals damage (ignoring Block) at start of turn, then drops by 1 ---
+{
+  const g = solo([{ id: "deadly_poison" }]);
+  assert(play(g, "a", "deadly_poison", "b") === null, "Deadly Poison plays");
+  assert(powerOf(g, "b", "poison") === 5, "Deadly Poison applies 5 Poison");
+  const bBefore = hpOf(g, "b");
+  finishTurn(g); // advance the turn so the Poison ticks at beginTurn
+  assert(hpOf(g, "b") === bBefore - 5, "Poison deals 5 damage at start of turn");
+  assert(powerOf(g, "b", "poison") === 4, "Poison drops to 4 after ticking");
+}
+
+// --- Shivs get Accuracy's bonus damage ---
+{
+  const g = solo([{ id: "accuracy" }, { id: "blade_dance" }]);
+  assert(play(g, "a", "accuracy") === null, "Accuracy (power) plays");
+  assert(play(g, "a", "blade_dance") === null, "Blade Dance adds Shivs");
+  assert(handOf(g, "a").filter((c) => c.id === "shiv").length === 3, "Blade Dance adds 3 Shivs");
+  const bBefore = hpOf(g, "b");
+  assert(play(g, "a", "shiv", "b") === null, "Shiv plays");
+  finishTurn(g);
+  // 4 base + 4 Accuracy = 8.
+  assert(hpOf(g, "b") === bBefore - 8, "Shiv deals 4 + 4 Accuracy = 8 (got " + (bBefore - hpOf(g, "b")) + ")");
+}
+
+// --- Skewer deals X hits (X = Energy spent) ---
+{
+  const g = solo([{ id: "skewer" }]);
+  const bBefore = hpOf(g, "b");
+  assert(play(g, "a", "skewer", "b") === null, "Skewer plays for X");
+  finishTurn(g);
+  // 3 energy -> X=3 -> 3 hits of 7 = 21.
+  assert(hpOf(g, "b") === bBefore - 21, "Skewer: 3 hits of 7 = 21 (got " + (bBefore - hpOf(g, "b")) + ")");
+}
+
+// --- Catalyst multiplies the target's Poison ---
+{
+  const g = solo([{ id: "deadly_poison" }, { id: "catalyst" }]);
+  play(g, "a", "deadly_poison", "b"); // 5 Poison
+  assert(play(g, "a", "catalyst", "b") === null, "Catalyst plays");
+  assert(powerOf(g, "b", "poison") === 10, "Catalyst doubles Poison 5 -> 10");
+}
+
+// --- A Thousand Cuts deals damage whenever you play a card ---
+{
+  const g = solo([{ id: "a_thousand_cuts" }, { id: "defend_g" }]);
+  assert(play(g, "a", "a_thousand_cuts") === null, "A Thousand Cuts (power) plays");
+  const bBefore = hpOf(g, "b");
+  play(g, "a", "defend_g"); // playing any card triggers 1 damage to all enemies
+  assert(hpOf(g, "b") === bBefore - 1, "A Thousand Cuts deals 1 on each card play");
+}
+
+// --- After Image grants Block whenever you play a card ---
+{
+  const g = solo([{ id: "after_image" }, { id: "defend_g" }]);
+  assert(play(g, "a", "after_image") === null, "After Image (power) plays");
+  const blockBefore = blockOf(g, "a") ?? 0;
+  play(g, "a", "defend_g"); // +5 Defend block, +1 After Image
+  assert(blockOf(g, "a") === blockBefore + 6, "After Image adds 1 Block on top of Defend's 5");
+}
+
+// --- Envenom applies Poison on unblocked attack damage ---
+{
+  const g = solo([{ id: "envenom" }, { id: "strike_g" }]);
+  assert(play(g, "a", "envenom") === null, "Envenom (power) plays");
+  play(g, "a", "strike_g", "b");
+  // Resolve damage without acking so Poison hasn't ticked away yet.
+  let guard = 0;
+  while (g.phase === "action" && guard++ < 30) g.pass(g.priorityId!);
+  assert(powerOf(g, "b", "poison") === 1, "Envenom applies 1 Poison on unblocked hit");
+}
+
+// --- Noxious Fumes applies Poison to all enemies at the start of your turn ---
+{
+  const g = solo([{ id: "noxious_fumes" }]);
+  assert(play(g, "a", "noxious_fumes") === null, "Noxious Fumes (power) plays");
+  assert(powerOf(g, "a", "noxious_fumes") === 2, "Noxious Fumes power is 2");
+  finishTurn(g);
+  assert(powerOf(g, "b", "poison") >= 1, "Noxious Fumes applied Poison to the enemy next turn");
+}
+
+// --- Survivor: discard a chosen card ---
+{
+  const g = solo([{ id: "survivor" }, { id: "strike_g" }, { id: "defend_g" }]);
+  assert(play(g, "a", "survivor") === null, "Survivor plays");
+  assert(blockOf(g, "a") === 8, "Survivor grants 8 Block");
+  const pc = g.viewFor("a").pendingChoice;
+  assert(!!pc, "Survivor opens a discard choice");
+  const strike = handOf(g, "a").find((c) => c.id === "strike_g")!;
+  assert(g.resolveChoice("a", [strike.uid]) === null, "discard choice resolves");
+  const me = g.viewFor("a").players.find((p) => p.id === "a")!;
+  assert(me.discardPile!.some((c) => c.id === "strike_g"), "chosen card moved to the discard pile");
+}
+
+// --- Calculated Gamble: discard the whole hand, draw that many, then exhaust ---
+{
+  const g = solo([{ id: "calculated_gamble" }, { id: "strike_g" }, { id: "defend_g" }]);
+  assert(play(g, "a", "calculated_gamble") === null, "Calculated Gamble plays");
+  const me = g.viewFor("a").players.find((p) => p.id === "a")!;
+  assert(me.exhaustPile!.some((c) => c.id === "calculated_gamble"), "Calculated Gamble exhausts itself");
+  // The 2 remaining cards are discarded then 2 are redrawn (reshuffled from discard).
+  assert(handOf(g, "a").length === 2, "discarded 2 and redrew 2 (got " + handOf(g, "a").length + ")");
+}
+
+// --- Grand Finale: only lands when the draw pile is empty ---
+{
+  // Two-card deck: both are drawn into hand, so the draw pile is empty.
+  const g = solo([{ id: "grand_finale" }, { id: "strike_g" }]);
+  const me = g.viewFor("a").players.find((p) => p.id === "a")!;
+  assert(me.drawCount === 0, "draw pile empty when whole deck is in hand");
+  const bBefore = hpOf(g, "b");
+  assert(play(g, "a", "grand_finale", "b") === null, "Grand Finale plays");
+  finishTurn(g);
+  assert(hpOf(g, "b") === bBefore - 50, "Grand Finale deals 50 with an empty draw pile");
+}
+{
+  // Pad the deck so cards remain in the draw pile -> Grand Finale fizzles.
+  const g = solo([
+    { id: "grand_finale" },
+    { id: "strike_g" },
+    { id: "strike_g" },
+    { id: "strike_g" },
+    { id: "strike_g" },
+    { id: "strike_g" },
+    { id: "strike_g" },
+  ]);
+  const me = g.viewFor("a").players.find((p) => p.id === "a")!;
+  assert(me.drawCount > 0, "draw pile non-empty with a padded deck");
+  const bBefore = hpOf(g, "b");
+  play(g, "a", "grand_finale", "b");
+  finishTurn(g);
+  assert(hpOf(g, "b") === bBefore, "Grand Finale deals 0 when the draw pile is not empty");
+}
+
+// --- Glass Knife: damage decreases by 2 each time it's played ---
+{
+  const g = solo([{ id: "glass_knife" }]);
+  ensure(g, "a");
+  const knife = handOf(g, "a").find((c) => c.id === "glass_knife")!;
+  const bBefore = hpOf(g, "b");
+  g.playCard("a", knife.uid, "b"); // first play: 8 x2 = 16
+  finishTurn(g);
+  assert(hpOf(g, "b") === bBefore - 16, "Glass Knife first play = 8 x2 = 16 (got " + (bBefore - hpOf(g, "b")) + ")");
+  const b2 = hpOf(g, "b");
+  // The same instance returns to hand next turn (single-card deck), now dealing 6 x2.
+  ensure(g, "a");
+  const knife2 = handOf(g, "a").find((c) => c.id === "glass_knife");
+  if (knife2) {
+    g.playCard("a", knife2.uid, "b");
+    finishTurn(g);
+    assert(hpOf(g, "b") === b2 - 12, "Glass Knife second play = 6 x2 = 12 (got " + (b2 - hpOf(g, "b")) + ")");
+  }
+}
+
+// --- Unload: deal damage, then discard all non-Attack cards from hand ---
+{
+  const g = solo([{ id: "unload" }, { id: "strike_g" }, { id: "defend_g" }, { id: "footwork" }]);
+  assert(play(g, "a", "unload", "b") === null, "Unload plays");
+  const me = g.viewFor("a").players.find((p) => p.id === "a")!;
+  assert(me.hand!.some((c) => c.id === "strike_g"), "Unload keeps the Attack in hand");
+  assert(!me.hand!.some((c) => c.id === "defend_g"), "Unload discarded the Skill");
+  assert(!me.hand!.some((c) => c.id === "footwork"), "Unload discarded the Power");
+  assert(me.discardPile!.some((c) => c.id === "defend_g"), "discarded Skill is in the discard pile");
+}
+
+// --- Wraith Form: gain Intangible now, lose Dexterity each turn ---
+{
+  const g = solo([{ id: "wraith_form" }]);
+  assert(play(g, "a", "wraith_form") === null, "Wraith Form plays");
+  assert(powerOf(g, "a", "intangible") === 2, "Wraith Form grants 2 Intangible");
+  assert(powerOf(g, "a", "wraith_form") === 1, "Wraith Form power applied");
+  finishTurn(g); // start of next turn drains 1 Dexterity
+  assert(powerOf(g, "a", "dexterity") === -1, "Wraith Form drains 1 Dexterity per turn (got " + powerOf(g, "a", "dexterity") + ")");
+}
+
+// --- Eviscerate: costs 1 less per card discarded this turn ---
+{
+  const g = new GameEngine("evis", seededRng(11));
+  g.addPlayer({ id: "a", name: "A", deck: [{ id: "eviscerate" }, { id: "survivor" }, { id: "strike_g" }], maxHp: 200 });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  const evisCard = () => g.viewFor("a").players.find((p) => p.id === "a")!.hand!.find((c) => c.id === "eviscerate");
+  assert(evisCard()!.cost === 3, "Eviscerate base cost is 3");
+  play(g, "a", "survivor"); // discards 1 (chosen)
+  const strike = handOf(g, "a").find((c) => c.id === "strike_g")!;
+  g.resolveChoice("a", [strike.uid]);
+  assert(evisCard()!.cost === 2, "Eviscerate costs 1 less after one discard (got " + evisCard()!.cost + ")");
+}
+
+// --- Corpse Explosion: a Poison death detonates for the target's Max HP ---
+{
+  // Three players so the explosion has a third target to hit.
+  const g = new GameEngine("corpse", seededRng(5));
+  g.addPlayer({ id: "a", name: "A", deck: [{ id: "corpse_explosion" }], maxHp: 200 });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 8 });
+  g.addPlayer({ id: "c", name: "C", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  // Ensure A holds priority to play, then drop a heavy Poison on B.
+  if (g.priorityId !== "a") g.pass(g.priorityId!);
+  const ce = handOf(g, "a").find((x) => x.id === "corpse_explosion")!;
+  g.playCard("a", ce.uid, "b");
+  assert(powerOf(g, "b", "poison") === 6, "Corpse Explosion applies 6 Poison");
+  assert(powerOf(g, "b", "corpse_explosion") === 1, "Corpse Explosion power applied");
+  const cBefore = hpOf(g, "c");
+  const aliveOf = (id: string) => g.viewFor("a").players.find((p) => p.id === id)!.alive;
+  // A 3-player-aware turn finisher: everyone passes, then every alive player acks.
+  const endTurn3 = () => {
+    let g2 = 0;
+    while (g.phase === "action" && g2++ < 30) g.pass(g.priorityId!);
+    if (g.phase === "resolution") for (const id of ["a", "b", "c"]) if (aliveOf(id)) g.acknowledgeResolution(id);
+  };
+  // Run turns until B dies of Poison (6 -> 5 -> ... each start of turn).
+  let guard = 0;
+  while (aliveOf("b") && g.phase !== "gameover" && guard++ < 10) endTurn3();
+  assert(!aliveOf("b"), "B dies to Poison");
+  assert(hpOf(g, "c") < cBefore, "Corpse Explosion damaged the third player on B's death");
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

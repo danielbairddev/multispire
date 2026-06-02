@@ -97,6 +97,8 @@ interface InternalPlayer {
   alive: boolean;
   // Number of times this player has lost HP this combat (Blood for Blood discount).
   hpLossCount: number;
+  // Number of cards discarded this turn (Eviscerate discount).
+  discardsThisTurn: number;
   // --- Regent resources ---
   // Star Energy: a second resource that persists across turns within a combat.
   stars: number;
@@ -139,7 +141,7 @@ interface InternalPlayer {
 // A card-selection the engine is paused on. The played card has already left the
 // hand and been paid for; we're waiting for `playerId` to pick cards, after which
 // `remaining` effects finish and the play completes.
-type ChoiceKind = "putDiscardOnDraw" | "putHandOnDraw" | "exhaustChosen" | "replaySkill";
+type ChoiceKind = "putDiscardOnDraw" | "putHandOnDraw" | "exhaustChosen" | "replaySkill" | "discardChosen";
 interface PendingChoice {
   playerId: string;
   kind: ChoiceKind;
@@ -220,6 +222,7 @@ export class GameEngine {
       passed: false,
       alive: true,
       hpLossCount: 0,
+      discardsThisTurn: 0,
       stars: 0,
       forge: 0,
       usesStars: seed.deck.some((spec) => resolveCard(spec.id, false)?.character === "regent"),
@@ -313,6 +316,28 @@ export class GameEngine {
       // Genesis: gain Star Energy at the start of each turn.
       const genesis = p.powers.get("genesis") ?? 0;
       if (genesis > 0) this.gainStars(p, genesis);
+      // Wraith Form: lose Dexterity at the start of each turn (the Intangible cost).
+      const wraith = p.powers.get("wraith_form") ?? 0;
+      if (wraith > 0) {
+        p.powers.set("dexterity", (p.powers.get("dexterity") ?? 0) - wraith);
+        this.pushLog(`✦ ${p.name} loses ${wraith} Dexterity (Wraith Form).`);
+      }
+      // Poison: lose HP equal to the stacks (ignores Block), then it drops by 1.
+      const poison = p.powers.get("poison") ?? 0;
+      if (poison > 0) {
+        p.hp = Math.max(0, p.hp - poison);
+        this.pushLog(`☠ ${p.name} takes ${poison} Poison damage.`);
+        if (poison - 1 > 0) p.powers.set("poison", poison - 1);
+        else p.powers.delete("poison");
+      }
+      // Noxious Fumes: apply Poison to every enemy at the start of your turn.
+      const fumes = p.powers.get("noxious_fumes") ?? 0;
+      if (fumes > 0) {
+        for (const q of this.players.values()) {
+          if (q.alive && q.id !== p.id) q.powers.set("poison", (q.powers.get("poison") ?? 0) + fumes);
+        }
+        this.pushLog(`☠ ${p.name}'s Noxious Fumes applies ${fumes} Poison to all enemies.`);
+      }
       // Clean up the leftover hand: Convergence retains everything once; otherwise
       // Retain keeps the card, Ethereal exhausts it, everything else discards.
       const leftover = p.hand;
@@ -330,6 +355,7 @@ export class GameEngine {
       p.attacksThisTurn = 0;
       p.skillsThisTurn = 0;
       p.cardsPlayedThisTurn = 0;
+      p.discardsThisTurn = 0;
       p.starsGainedThisTurn = 0;
       p.spentStarsThisTurn = false;
       if (p.nextTurnStars > 0) {
@@ -343,6 +369,10 @@ export class GameEngine {
       // Spectrum Shift: add random Colorless cards to hand at the start of the turn.
       const spectrum = p.powers.get("spectrum_shift") ?? 0;
       if (spectrum > 0) this.addRandomCardsToPile(p, "neutral", spectrum, "hand");
+      // Infinite Blades: add Shivs to your hand at the start of your turn.
+      const blades = p.powers.get("infinite_blades") ?? 0;
+      for (let i = 0; i < blades; i++) p.hand.push({ uid: uid("c"), id: "shiv", upgraded: false });
+      if (blades > 0) this.onCardCreated(p, blades);
       // Bombardment and friends auto-play from the Exhaust pile each turn.
       this.autoPlayFromExhaust(p);
       this.drawCards(p, HAND_SIZE);
@@ -403,6 +433,8 @@ export class GameEngine {
       p.blockedThisTurn = false;
       p.passed = false;
     }
+    // Poison (or Brutality) at the top of the turn may have been lethal.
+    this.checkDeaths();
     this.priorityId = this.startingPlayerId;
     this.autoPassIfStuck();
   }
@@ -484,6 +516,17 @@ export class GameEngine {
       const parry = p.powers.get("parry") ?? 0;
       if (parry > 0) this.gainBlock(p, parry, "Parry");
     }
+    // After Image: gain Block whenever you play a card.
+    const afterImage = p.powers.get("after_image") ?? 0;
+    if (afterImage > 0) this.gainBlock(p, afterImage, "After Image");
+    // A Thousand Cuts: deal damage to all enemies whenever you play a card.
+    const cuts = p.powers.get("thousand_cuts") ?? 0;
+    if (cuts > 0) {
+      for (const q of this.players.values()) {
+        if (q.alive && q.id !== p.id) this.dealDamage(q, cuts);
+      }
+      this.pushLog(`✦ ${p.name}'s A Thousand Cuts deals ${cuts} to all enemies.`);
+    }
 
     const cardLabel = `${def.name}${inst.upgraded ? "+" : ""}`;
     const targetSuffix = targets.length === 1 && targets[0] !== playerId ? ` → ${this.name(targets[0])}` : "";
@@ -526,6 +569,7 @@ export class GameEngine {
   private effectiveCost(p: InternalPlayer, def: CardDef): number | "X" {
     if (def.cost === "X") return "X";
     if (def.dynamicCost === "hp_loss") return Math.max(0, def.cost - p.hpLossCount);
+    if (def.dynamicCost === "discards") return Math.max(0, def.cost - p.discardsThisTurn);
     return def.cost;
   }
 
@@ -618,6 +662,12 @@ export class GameEngine {
       if (reflect > 0 && blocked > 0 && src.alive && src.id !== tgt.id) {
         const r = this.dealDamage(src, blocked);
         if (r.hp > 0) this.pushLog(`✦ ${tgt.name}'s Reflect deals ${r.hp} to ${src.name}.`);
+      }
+      // Envenom: dealing unblocked attack damage applies Poison to the target.
+      const envenom = src.powers.get("envenom") ?? 0;
+      if (envenom > 0 && hpLost > 0 && tgt.alive && src.id !== tgt.id) {
+        tgt.powers.set("poison", (tgt.powers.get("poison") ?? 0) + envenom);
+        this.pushLog(`☠ ${tgt.name} gains ${envenom} Poison (Envenom).`);
       }
       const lethal = tgt.hp <= 0;
       // Reaper-style lifesteal: heal the attacker for unblocked damage dealt.
@@ -772,8 +822,10 @@ export class GameEngine {
     eff: Effect,
   ): eff is Extract<
     Effect,
-    { kind: "putDiscardOnDraw" | "putHandOnDraw" | "exhaustChosen" | "replayChosenSkill" }
+    { kind: "putDiscardOnDraw" | "putHandOnDraw" | "exhaustChosen" | "replayChosenSkill" | "discard" }
   > {
+    // A player-chosen discard pauses; a random discard resolves immediately.
+    if (eff.kind === "discard") return !eff.random;
     return (
       eff.kind === "putDiscardOnDraw" ||
       eff.kind === "putHandOnDraw" ||
@@ -806,7 +858,8 @@ export class GameEngine {
     instUid?: string,
   ): boolean {
     if (!this.isChoiceEffect(eff)) return false;
-    const kind: ChoiceKind = eff.kind === "replayChosenSkill" ? "replaySkill" : eff.kind;
+    const kind: ChoiceKind =
+      eff.kind === "replayChosenSkill" ? "replaySkill" : eff.kind === "discard" ? "discardChosen" : eff.kind;
     const replayTimes = eff.kind === "replayChosenSkill" ? eff.times : undefined;
     const sourcePile: "hand" | "discard" = kind === "putDiscardOnDraw" ? "discard" : "hand";
     // The eligible pool: replaySkill is limited to replayable Skills in hand.
@@ -848,6 +901,8 @@ export class GameEngine {
         return `Choose ${n} from your hand to put on top of your draw pile`;
       case "exhaustChosen":
         return `Choose ${n} to Exhaust`;
+      case "discardChosen":
+        return `Choose ${n} to discard`;
       case "replaySkill":
         return `Choose a Skill to play again`;
     }
@@ -877,7 +932,12 @@ export class GameEngine {
       this.pushLog(`✦ ${source.name} plays ${d.name} ${times} times.`);
       return;
     }
-    if (kind === "exhaustChosen") {
+    if (kind === "discardChosen") {
+      for (const c of chosen) source.discard.push(c);
+      source.discardsThisTurn += chosen.length;
+      const names = chosen.map((c) => resolveCard(c.id, c.upgraded)?.name ?? c.id).join(", ");
+      this.pushLog(`✦ ${source.name} discards ${names}.`);
+    } else if (kind === "exhaustChosen") {
       for (const c of chosen) this.exhaustCard(source, c);
       const names = chosen.map((c) => resolveCard(c.id, c.upgraded)?.name ?? c.id).join(", ");
       this.pushLog(`✦ ${source.name} exhausts ${names}.`);
@@ -918,6 +978,8 @@ export class GameEngine {
   ): void {
     switch (eff.kind) {
       case "damage": {
+        // Grand Finale: only lands if the caster's draw pile is empty.
+        if (eff.onlyIfDrawEmpty && source.draw.length > 0) break;
         // Perfected Strike: +damage for each "Strike" card across the source's deck.
         const strikeBonus = eff.perStrike ? eff.perStrike * this.countStrikeCards(source) : 0;
         // Rampage: this card instance hits harder each time it's played this combat.
@@ -937,8 +999,10 @@ export class GameEngine {
         // Vigor: a one-shot bonus to the next Attack, consumed when it's played.
         const vigor = source.powers.get("vigor") ?? 0;
         if (vigor > 0) source.powers.delete("vigor");
+        // Accuracy: Shivs deal extra damage.
+        const accuracyBonus = def.id === "shiv" ? (source.powers.get("accuracy") ?? 0) : 0;
         const base =
-          eff.amount + strikeBonus + rampageBonus + starCardBonus + skillBonus + starGainBonus + createdBonus + vigor;
+          eff.amount + strikeBonus + rampageBonus + starCardBonus + skillBonus + starGainBonus + createdBonus + vigor + accuracyBonus;
         // Monarch's Gaze: attacking an enemy saps 1 Strength from it this turn.
         const gaze = source.powers.get("monarchs_gaze") ?? 0;
         for (const tid of targets) {
@@ -1091,6 +1155,63 @@ export class GameEngine {
           else source.discard.push(c);
         }
         if (eff.amount > 0) this.onCardCreated(source, eff.amount);
+        break;
+      }
+      case "discard": {
+        // A chosen discard is handled by the choice machinery; this branch runs
+        // for random discards (e.g. All-Out Attack).
+        for (let i = 0; i < eff.amount && source.hand.length > 0; i++) {
+          const idx = Math.floor(this.rng() * source.hand.length);
+          const [c] = source.hand.splice(idx, 1);
+          source.discard.push(c);
+          source.discardsThisTurn++;
+          const cdef = resolveCard(c.id, c.upgraded);
+          this.pushLog(`✦ ${source.name} discards ${cdef?.name ?? c.id}.`);
+        }
+        break;
+      }
+      case "discardHandDraw": {
+        // Calculated Gamble: discard your whole hand, then draw that many cards.
+        const n = source.hand.length;
+        if (n > 0) {
+          source.discard.push(...source.hand);
+          source.hand = [];
+          source.discardsThisTurn += n;
+          this.pushLog(`✦ ${source.name} discards their hand (${n}).`);
+          this.drawCards(source, n);
+        }
+        break;
+      }
+      case "discardNonAttacks": {
+        // Unload: discard every non-Attack card from hand.
+        const keep: CardInstance[] = [];
+        const dumped: CardInstance[] = [];
+        for (const c of source.hand) {
+          const cdef = resolveCard(c.id, c.upgraded);
+          if (cdef && cdef.type !== "attack") dumped.push(c);
+          else keep.push(c);
+        }
+        source.hand = keep;
+        for (const c of dumped) source.discard.push(c);
+        source.discardsThisTurn += dumped.length;
+        if (dumped.length > 0) {
+          const names = dumped.map((c) => resolveCard(c.id, c.upgraded)?.name ?? c.id).join(", ");
+          this.pushLog(`✦ ${source.name} discards non-Attacks: ${names}.`);
+        }
+        break;
+      }
+      case "multiplyTargetPoison": {
+        // Catalyst: multiply each target's current Poison.
+        for (const tid of targets) {
+          const t = this.players.get(tid);
+          if (!t) continue;
+          const cur = t.powers.get("poison") ?? 0;
+          if (cur > 0) {
+            const next = cur * eff.factor;
+            t.powers.set("poison", next);
+            this.pushLog(`☠ ${t.name}'s Poison rises to ${next}.`);
+          }
+        }
         break;
       }
       case "gainStars":
@@ -1726,10 +1847,26 @@ export class GameEngine {
 
   private checkDeaths(): void {
     if (this.phase === "gameover") return;
-    for (const p of this.players.values()) {
-      if (p.alive && p.hp <= 0) {
-        p.alive = false;
-        this.pushLog(`${p.name} is defeated!`);
+    // Loop until stable: a Corpse Explosion can kill further targets, which may
+    // themselves explode.
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const p of this.players.values()) {
+        if (p.alive && p.hp <= 0) {
+          p.alive = false;
+          changed = true;
+          this.pushLog(`${p.name} is defeated!`);
+          // Corpse Explosion: on death, deal its Max HP (×stacks) to all enemies.
+          const boom = p.powers.get("corpse_explosion") ?? 0;
+          if (boom > 0) {
+            const dmg = p.maxHp * boom;
+            for (const q of this.players.values()) {
+              if (q.alive && q.id !== p.id) this.dealDamage(q, dmg);
+            }
+            this.pushLog(`💥 ${p.name}'s Corpse Explosion deals ${dmg} to all enemies.`);
+          }
+        }
       }
     }
     const alive = this.order.filter((id) => this.players.get(id)!.alive);
@@ -1946,14 +2083,19 @@ export function describeCard(def: CardDef): string {
         const per = e.perStrike ? ` (+${e.perStrike} per Strike in deck)` : "";
         const life = e.lifesteal ? ", heal for unblocked damage" : "";
         const kill = e.maxHpOnKill ? `, +${e.maxHpOnKill} max HP on kill` : "";
-        const ramp = e.rampage ? `, +${e.rampage} damage each time it's played this combat` : "";
+        const ramp = e.rampage
+          ? e.rampage > 0
+            ? `, +${e.rampage} damage each time it's played this combat`
+            : `, ${e.rampage} damage each time it's played this combat`
+          : "";
+        const empty = e.onlyIfDrawEmpty ? " (only if your draw pile is empty)" : "";
         const star = e.perStarCard ? `, +${e.perStarCard} per Star Energy card in hand` : "";
         const skill = e.perSkillThisTurn ? `, +${e.perSkillThisTurn} per Skill played this turn` : "";
         const starGain = e.perStarGainedThisTurn ? `, +${e.perStarGainedThisTurn} per Star Energy gained this turn` : "";
         const created = e.perCardCreatedThisCombat ? `, +${e.perCardCreatedThisCombat} per card created this combat` : "";
         const koStars = e.starsOnKill ? `, gain ${e.starsOnKill} Star Energy if this kills` : "";
         parts.push(
-          `Deal ${e.amount}${e.times && e.times > 1 ? ` x${e.times}` : ""} damage${mul}${per}${life}${kill}${ramp}${star}${skill}${starGain}${created}${koStars}`,
+          `Deal ${e.amount}${e.times && e.times > 1 ? ` x${e.times}` : ""} damage${mul}${per}${life}${kill}${ramp}${star}${skill}${starGain}${created}${koStars}${empty}`,
         );
         break;
       }
@@ -1995,6 +2137,18 @@ export function describeCard(def: CardDef): string {
         parts.push(`Add ${e.amount} ${cardName} to ${e.pile}`);
         break;
       }
+      case "discard":
+        parts.push(`Discard ${e.amount}${e.random ? " at random" : ""} card${e.amount > 1 ? "s" : ""}`);
+        break;
+      case "discardHandDraw":
+        parts.push("Discard your hand, then draw that many cards");
+        break;
+      case "multiplyTargetPoison":
+        parts.push(e.factor === 2 ? "Double the target's Poison" : `Multiply the target's Poison by ${e.factor}`);
+        break;
+      case "discardNonAttacks":
+        parts.push("Discard all non-Attack cards from your hand");
+        break;
       case "exhaustRandom":
         parts.push(`Exhaust ${e.amount} random card${e.amount > 1 ? "s" : ""} from hand`);
         break;
@@ -2097,6 +2251,7 @@ export function describeCard(def: CardDef): string {
   }
   let text = parts.join(". ");
   if (def.dynamicCost === "hp_loss") text += ". Costs 1 less for each time you've lost HP this combat";
+  if (def.dynamicCost === "discards") text += ". Costs 1 less for each card discarded this turn";
   if (def.requires === "all_attacks_in_hand") text += ". Play only if all cards in hand are Attacks";
   text += def.exhaust ? ". Exhaust." : ".";
   if (def.onExhaust && def.onExhaust.length) {

@@ -1,0 +1,825 @@
+import type { CardDef } from "@multispire/shared";
+
+// Silent card definitions. Pure functional game data: name, cost, and numeric
+// effects (no flavor text). Values mirror Slay the Spire mechanics. The Silent's
+// signature systems are Poison (a stacking debuff that ticks each turn), Shivs
+// (0-cost token Attacks generated in combat), and discard synergy.
+//
+// Cards whose real behavior needs systems we don't simulate (innate draw order,
+// per-discard cost scaling, draw-pile inspection, etc.) are marked `approx: true`
+// so the UI shows them as not-yet-supported rather than playing a wrong model.
+//
+// To add a card: append a CardDef here. The registry picks it up automatically.
+
+export const SILENT_CARDS: CardDef[] = [
+  // ---- Token ----
+  {
+    id: "shiv",
+    name: "Shiv",
+    character: "silent",
+    type: "attack",
+    rarity: "special",
+    cost: 0,
+    target: "enemy",
+    token: true,
+    exhaust: true,
+    effects: [{ kind: "damage", amount: 4 }],
+  },
+
+  // ---- Starter ----
+  {
+    id: "strike_g",
+    name: "Strike",
+    character: "silent",
+    type: "attack",
+    rarity: "basic",
+    cost: 1,
+    target: "enemy",
+    effects: [{ kind: "damage", amount: 6 }],
+    upgrade: { effects: [{ kind: "damage", amount: 9 }] },
+  },
+  {
+    id: "defend_g",
+    name: "Defend",
+    character: "silent",
+    type: "skill",
+    rarity: "basic",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "block", amount: 5 }],
+    upgrade: { effects: [{ kind: "block", amount: 8 }] },
+  },
+  {
+    id: "neutralize",
+    name: "Neutralize",
+    character: "silent",
+    type: "attack",
+    rarity: "basic",
+    cost: 0,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 3 },
+      { kind: "applyPower", power: "weak", amount: 1, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 4 },
+        { kind: "applyPower", power: "weak", amount: 2, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "survivor",
+    name: "Survivor",
+    character: "silent",
+    type: "skill",
+    rarity: "basic",
+    cost: 1,
+    target: "self",
+    effects: [
+      { kind: "block", amount: 8 },
+      { kind: "discard", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 11 },
+        { kind: "discard", amount: 1 },
+      ],
+    },
+  },
+
+  // ---- Common ----
+  {
+    id: "bane",
+    name: "Bane",
+    character: "silent",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    // Deal damage, then deal it again if the target is Poisoned.
+    effects: [
+      { kind: "damage", amount: 7 },
+      { kind: "ifTargetHasPower", power: "poison", then: [{ kind: "damage", amount: 7 }] },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 10 },
+        { kind: "ifTargetHasPower", power: "poison", then: [{ kind: "damage", amount: 10 }] },
+      ],
+    },
+  },
+  {
+    id: "dagger_spray",
+    name: "Dagger Spray",
+    character: "silent",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "all_enemies",
+    effects: [{ kind: "damage", amount: 4, times: 2 }],
+    upgrade: { effects: [{ kind: "damage", amount: 6, times: 2 }] },
+  },
+  {
+    id: "dagger_throw",
+    name: "Dagger Throw",
+    character: "silent",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 9 },
+      { kind: "draw", amount: 1 },
+      { kind: "discard", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 12 },
+        { kind: "draw", amount: 1 },
+        { kind: "discard", amount: 1 },
+      ],
+    },
+  },
+  {
+    id: "deadly_poison",
+    name: "Deadly Poison",
+    character: "silent",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    effects: [{ kind: "applyPower", power: "poison", amount: 5, to: "enemy" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "poison", amount: 7, to: "enemy" }] },
+  },
+  {
+    id: "poisoned_stab",
+    name: "Poisoned Stab",
+    character: "silent",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 6 },
+      { kind: "applyPower", power: "poison", amount: 3, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 8 },
+        { kind: "applyPower", power: "poison", amount: 4, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "quick_slash",
+    name: "Quick Slash",
+    character: "silent",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 8 },
+      { kind: "draw", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 12 },
+        { kind: "draw", amount: 1 },
+      ],
+    },
+  },
+  {
+    id: "slice",
+    name: "Slice",
+    character: "silent",
+    type: "attack",
+    rarity: "common",
+    cost: 0,
+    target: "enemy",
+    effects: [{ kind: "damage", amount: 6 }],
+    upgrade: { effects: [{ kind: "damage", amount: 9 }] },
+  },
+  {
+    id: "sucker_punch",
+    name: "Sucker Punch",
+    character: "silent",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 7 },
+      { kind: "applyPower", power: "weak", amount: 1, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 9 },
+        { kind: "applyPower", power: "weak", amount: 2, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "acrobatics",
+    name: "Acrobatics",
+    character: "silent",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "self",
+    effects: [
+      { kind: "draw", amount: 3 },
+      { kind: "discard", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "draw", amount: 4 },
+        { kind: "discard", amount: 1 },
+      ],
+    },
+  },
+  {
+    id: "backflip",
+    name: "Backflip",
+    character: "silent",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "self",
+    effects: [
+      { kind: "block", amount: 5 },
+      { kind: "draw", amount: 2 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 8 },
+        { kind: "draw", amount: 2 },
+      ],
+    },
+  },
+  {
+    id: "blade_dance",
+    name: "Blade Dance",
+    character: "silent",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "addCardToPile", cardId: "shiv", amount: 3, pile: "hand" }],
+    upgrade: { effects: [{ kind: "addCardToPile", cardId: "shiv", amount: 4, pile: "hand" }] },
+  },
+  {
+    id: "cloak_and_dagger",
+    name: "Cloak and Dagger",
+    character: "silent",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "self",
+    effects: [
+      { kind: "block", amount: 6 },
+      { kind: "addCardToPile", cardId: "shiv", amount: 1, pile: "hand" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 6 },
+        { kind: "addCardToPile", cardId: "shiv", amount: 2, pile: "hand" },
+      ],
+    },
+  },
+  {
+    id: "deflect",
+    name: "Deflect",
+    character: "silent",
+    type: "skill",
+    rarity: "common",
+    cost: 0,
+    target: "self",
+    effects: [{ kind: "block", amount: 4 }],
+    upgrade: { effects: [{ kind: "block", amount: 7 }] },
+  },
+  {
+    id: "dodge_and_roll",
+    name: "Dodge and Roll",
+    character: "silent",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "self",
+    effects: [
+      { kind: "block", amount: 4 },
+      { kind: "nextTurnBonus", block: 4 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 6 },
+        { kind: "nextTurnBonus", block: 6 },
+      ],
+    },
+  },
+  {
+    id: "flying_knee",
+    name: "Flying Knee",
+    character: "silent",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 8 },
+      { kind: "nextTurnBonus", energy: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 11 },
+        { kind: "nextTurnBonus", energy: 1 },
+      ],
+    },
+  },
+  {
+    id: "outmaneuver",
+    name: "Outmaneuver",
+    character: "silent",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "nextTurnBonus", energy: 2 }],
+    upgrade: { effects: [{ kind: "nextTurnBonus", energy: 3 }] },
+  },
+  {
+    id: "prepared",
+    name: "Prepared",
+    character: "silent",
+    type: "skill",
+    rarity: "common",
+    cost: 0,
+    target: "self",
+    effects: [
+      { kind: "draw", amount: 1 },
+      { kind: "discard", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "draw", amount: 2 },
+        { kind: "discard", amount: 2 },
+      ],
+    },
+  },
+
+  // ---- Uncommon ----
+  {
+    id: "accuracy",
+    name: "Accuracy",
+    character: "silent",
+    type: "power",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "applyPower", power: "accuracy", amount: 4, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "accuracy", amount: 6, to: "self" }] },
+  },
+  {
+    id: "all_out_attack",
+    name: "All-Out Attack",
+    character: "silent",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 1,
+    target: "all_enemies",
+    effects: [
+      { kind: "damage", amount: 10 },
+      { kind: "discard", amount: 1, random: true },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 14 },
+        { kind: "discard", amount: 1, random: true },
+      ],
+    },
+  },
+  {
+    id: "backstab",
+    name: "Backstab",
+    character: "silent",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 0,
+    target: "enemy",
+    // (Innate draw-order isn't modeled; the damage + Exhaust are faithful.)
+    exhaust: true,
+    effects: [{ kind: "damage", amount: 11 }],
+    upgrade: { effects: [{ kind: "damage", amount: 15 }] },
+  },
+  {
+    id: "bouncing_flask",
+    name: "Bouncing Flask",
+    character: "silent",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 2,
+    target: "enemy",
+    // Applies 3 Poison three times to random enemies; in our duel that's 9 Poison
+    // on the chosen target. Upgrade hits a fourth time (12).
+    effects: [{ kind: "applyPower", power: "poison", amount: 9, to: "enemy" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "poison", amount: 12, to: "enemy" }] },
+  },
+  {
+    id: "calculated_gamble",
+    name: "Calculated Gamble",
+    character: "silent",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 0,
+    target: "self",
+    exhaust: true,
+    effects: [{ kind: "discardHandDraw" }],
+    upgrade: { exhaust: false },
+  },
+  {
+    id: "caltrops",
+    name: "Caltrops",
+    character: "silent",
+    type: "power",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "applyPower", power: "thorns", amount: 3, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "thorns", amount: 5, to: "self" }] },
+  },
+  {
+    id: "catalyst",
+    name: "Catalyst",
+    character: "silent",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    exhaust: true,
+    effects: [{ kind: "multiplyTargetPoison", factor: 2 }],
+    upgrade: { effects: [{ kind: "multiplyTargetPoison", factor: 3 }] },
+  },
+  {
+    id: "concentrate",
+    name: "Concentrate",
+    character: "silent",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 0,
+    target: "self",
+    effects: [
+      { kind: "discard", amount: 3 },
+      { kind: "gainEnergy", amount: 2 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "discard", amount: 2 },
+        { kind: "gainEnergy", amount: 2 },
+      ],
+    },
+  },
+  {
+    id: "crippling_cloud",
+    name: "Crippling Cloud",
+    character: "silent",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 2,
+    target: "all_enemies",
+    exhaust: true,
+    effects: [
+      { kind: "applyPower", power: "poison", amount: 4, to: "enemy" },
+      { kind: "applyPower", power: "weak", amount: 2, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "applyPower", power: "poison", amount: 7, to: "enemy" },
+        { kind: "applyPower", power: "weak", amount: 2, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "dash",
+    name: "Dash",
+    character: "silent",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 2,
+    target: "enemy",
+    effects: [
+      { kind: "block", amount: 10 },
+      { kind: "damage", amount: 10 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 13 },
+        { kind: "damage", amount: 13 },
+      ],
+    },
+  },
+  {
+    id: "envenom",
+    name: "Envenom",
+    character: "silent",
+    type: "power",
+    rarity: "uncommon",
+    cost: 2,
+    target: "self",
+    effects: [{ kind: "applyPower", power: "envenom", amount: 1, to: "self" }],
+    upgrade: { cost: 1 },
+  },
+  {
+    id: "footwork",
+    name: "Footwork",
+    character: "silent",
+    type: "power",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "applyPower", power: "dexterity", amount: 2, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "dexterity", amount: 3, to: "self" }] },
+  },
+  {
+    id: "heel_hook",
+    name: "Heel Hook",
+    character: "silent",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    // If the target is Weak, draw a card and gain 1 Energy.
+    effects: [
+      { kind: "damage", amount: 5 },
+      {
+        kind: "ifTargetHasPower",
+        power: "weak",
+        then: [
+          { kind: "draw", amount: 1 },
+          { kind: "gainEnergy", amount: 1 },
+        ],
+      },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 8 },
+        {
+          kind: "ifTargetHasPower",
+          power: "weak",
+          then: [
+            { kind: "draw", amount: 1 },
+            { kind: "gainEnergy", amount: 1 },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: "infinite_blades",
+    name: "Infinite Blades",
+    character: "silent",
+    type: "power",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    // (Upgrade makes it Innate; draw-order isn't modeled, so the effect is unchanged.)
+    effects: [{ kind: "applyPower", power: "infinite_blades", amount: 1, to: "self" }],
+  },
+  {
+    id: "leg_sweep",
+    name: "Leg Sweep",
+    character: "silent",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 2,
+    target: "enemy",
+    effects: [
+      { kind: "applyPower", power: "weak", amount: 2, to: "enemy" },
+      { kind: "block", amount: 11 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "applyPower", power: "weak", amount: 3, to: "enemy" },
+        { kind: "block", amount: 14 },
+      ],
+    },
+  },
+  {
+    id: "noxious_fumes",
+    name: "Noxious Fumes",
+    character: "silent",
+    type: "power",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "applyPower", power: "noxious_fumes", amount: 2, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "noxious_fumes", amount: 3, to: "self" }] },
+  },
+  {
+    id: "predator",
+    name: "Predator",
+    character: "silent",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 2,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 15 },
+      { kind: "nextTurnBonus", draw: 2 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 20 },
+        { kind: "nextTurnBonus", draw: 2 },
+      ],
+    },
+  },
+  {
+    id: "riddle_with_holes",
+    name: "Riddle with Holes",
+    character: "silent",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 2,
+    target: "enemy",
+    effects: [{ kind: "damage", amount: 3, times: 5 }],
+    upgrade: { effects: [{ kind: "damage", amount: 4, times: 5 }] },
+  },
+  {
+    id: "skewer",
+    name: "Skewer",
+    character: "silent",
+    type: "attack",
+    rarity: "uncommon",
+    cost: "X",
+    target: "enemy",
+    // Deal damage X times, where X is the Energy spent.
+    effects: [{ kind: "damagePerX", amount: 7 }],
+    upgrade: { effects: [{ kind: "damagePerX", amount: 10 }] },
+  },
+  {
+    id: "terror",
+    name: "Terror",
+    character: "silent",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    exhaust: true,
+    effects: [{ kind: "applyPower", power: "vulnerable", amount: 99, to: "enemy" }],
+    upgrade: { cost: 0 },
+  },
+
+  // ---- Rare ----
+  {
+    id: "adrenaline",
+    name: "Adrenaline",
+    character: "silent",
+    type: "skill",
+    rarity: "rare",
+    cost: 0,
+    target: "self",
+    exhaust: true,
+    effects: [
+      { kind: "gainEnergy", amount: 2 },
+      { kind: "draw", amount: 2 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "gainEnergy", amount: 3 },
+        { kind: "draw", amount: 2 },
+      ],
+    },
+  },
+  {
+    id: "after_image",
+    name: "After Image",
+    character: "silent",
+    type: "power",
+    rarity: "rare",
+    cost: 1,
+    target: "self",
+    // (Upgrade makes it Innate; draw-order isn't modeled, so the effect is unchanged.)
+    effects: [{ kind: "applyPower", power: "after_image", amount: 1, to: "self" }],
+  },
+  {
+    id: "a_thousand_cuts",
+    name: "A Thousand Cuts",
+    character: "silent",
+    type: "power",
+    rarity: "rare",
+    cost: 2,
+    target: "self",
+    effects: [{ kind: "applyPower", power: "thousand_cuts", amount: 1, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "thousand_cuts", amount: 2, to: "self" }] },
+  },
+  {
+    id: "die_die_die",
+    name: "Die Die Die",
+    character: "silent",
+    type: "attack",
+    rarity: "rare",
+    cost: 1,
+    target: "all_enemies",
+    exhaust: true,
+    effects: [{ kind: "damage", amount: 13 }],
+    upgrade: { effects: [{ kind: "damage", amount: 17 }] },
+  },
+
+  // ---- Rares ----
+  {
+    id: "grand_finale",
+    name: "Grand Finale",
+    character: "silent",
+    type: "attack",
+    rarity: "rare",
+    cost: 0,
+    target: "all_enemies",
+    // Deal 50 damage to all enemies, but only if your draw pile is empty.
+    effects: [{ kind: "damage", amount: 50, onlyIfDrawEmpty: true }],
+  },
+  {
+    id: "glass_knife",
+    name: "Glass Knife",
+    character: "silent",
+    type: "attack",
+    rarity: "rare",
+    cost: 1,
+    target: "enemy",
+    // 8 damage twice; this instance's damage drops by 2 each time it's played.
+    effects: [{ kind: "damage", amount: 8, times: 2, rampage: -2 }],
+    upgrade: { effects: [{ kind: "damage", amount: 12, times: 2, rampage: -2 }] },
+  },
+  {
+    id: "unload",
+    name: "Unload",
+    character: "silent",
+    type: "attack",
+    rarity: "rare",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 14 },
+      { kind: "discardNonAttacks" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 18 },
+        { kind: "discardNonAttacks" },
+      ],
+    },
+  },
+  {
+    id: "wraith_form",
+    name: "Wraith Form",
+    character: "silent",
+    type: "power",
+    rarity: "rare",
+    cost: 3,
+    target: "self",
+    // Gain Intangible; lose 1 Dexterity at the start of each of your turns.
+    effects: [
+      { kind: "applyPower", power: "intangible", amount: 2, to: "self" },
+      { kind: "applyPower", power: "wraith_form", amount: 1, to: "self" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "applyPower", power: "intangible", amount: 3, to: "self" },
+        { kind: "applyPower", power: "wraith_form", amount: 1, to: "self" },
+      ],
+    },
+  },
+  {
+    id: "eviscerate",
+    name: "Eviscerate",
+    character: "silent",
+    type: "attack",
+    rarity: "rare",
+    cost: 3,
+    target: "enemy",
+    // Costs 1 less for each card discarded this turn.
+    dynamicCost: "discards",
+    effects: [{ kind: "damage", amount: 7, times: 3 }],
+    upgrade: { effects: [{ kind: "damage", amount: 9, times: 3 }] },
+  },
+  {
+    id: "corpse_explosion",
+    name: "Corpse Explosion",
+    character: "silent",
+    type: "skill",
+    rarity: "rare",
+    cost: 2,
+    target: "enemy",
+    // Apply Poison; when the target dies, deal its Max HP to all enemies.
+    effects: [
+      { kind: "applyPower", power: "poison", amount: 6, to: "enemy" },
+      { kind: "applyPower", power: "corpse_explosion", amount: 1, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "applyPower", power: "poison", amount: 9, to: "enemy" },
+        { kind: "applyPower", power: "corpse_explosion", amount: 1, to: "enemy" },
+      ],
+    },
+  },
+];

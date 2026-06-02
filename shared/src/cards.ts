@@ -46,6 +46,8 @@ export type Effect =
       perStarGainedThisTurn?: number;
       perCardCreatedThisCombat?: number;
       starsOnKill?: number;
+      // Only deal the damage if the caster's draw pile is empty (e.g. Grand Finale).
+      onlyIfDrawEmpty?: boolean;
     }
   | { kind: "block"; amount: number }
   | { kind: "applyPower"; power: PowerId; amount: number; to: "enemy" | "self" }
@@ -122,6 +124,16 @@ export type Effect =
   // doubles X when X is at least that value (Heavenly Drill). `randomTarget` picks
   // a fresh random living enemy for each hit (Stardust).
   | { kind: "damagePerX"; amount: number; doubleAt?: number; randomTarget?: boolean }
+  // --- Silent: discard & Poison ---
+  // Discard `amount` card(s) from your hand. By default the player chooses (the
+  // engine pauses); `random: true` discards at random (e.g. All-Out Attack).
+  | { kind: "discard"; amount: number; random?: boolean }
+  // Discard your whole hand, then draw that many cards (e.g. Calculated Gamble).
+  | { kind: "discardHandDraw" }
+  // Multiply the target's current Poison by `factor` (e.g. Catalyst doubles it).
+  | { kind: "multiplyTargetPoison"; factor: number }
+  // Discard every non-Attack card from your hand (e.g. Unload).
+  | { kind: "discardNonAttacks" }
   // Escape hatch: an effect we know exists but haven't modeled yet. Logged loudly.
   | { kind: "unimplemented"; note: string };
 
@@ -159,9 +171,10 @@ export interface CardDef {
   requires?: "all_attacks_in_hand";
   /**
    * A cost that changes with game state. "hp_loss" makes the card cost 1 less for
-   * each time its owner has lost HP this combat (e.g. Blood for Blood).
+   * each time its owner has lost HP this combat (e.g. Blood for Blood). "discards"
+   * makes it cost 1 less for each card discarded this turn (e.g. Eviscerate).
    */
-  dynamicCost?: "hp_loss";
+  dynamicCost?: "hp_loss" | "discards";
   /**
    * Marks a card whose real behavior is only partially modeled. When approximated
    * cards are disabled (the default), these are shown as "not yet supported" and
@@ -242,6 +255,26 @@ export type PowerId =
   | "reflect"
   // Whenever you spend 4 total Energy this combat, refund 1 Energy (Orbit).
   | "orbit"
+  // --- Silent powers ---
+  // Poison: at the start of your turn, lose HP equal to the stacks (ignores
+  // Block), then the stacks drop by 1.
+  | "poison"
+  // Noxious Fumes: at the start of your turn, apply N Poison to all enemies.
+  | "noxious_fumes"
+  // Infinite Blades: at the start of your turn, add N Shivs to your hand.
+  | "infinite_blades"
+  // A Thousand Cuts: whenever you play a card, deal N damage to all enemies.
+  | "thousand_cuts"
+  // After Image: whenever you play a card, gain N Block.
+  | "after_image"
+  // Envenom: whenever you deal unblocked attack damage, apply N Poison.
+  | "envenom"
+  // Accuracy: your Shivs deal N additional damage.
+  | "accuracy"
+  // Wraith Form: lose N Dexterity at the start of each of your turns.
+  | "wraith_form"
+  // Corpse Explosion: when this target dies, deal its Max HP (×N) to all enemies.
+  | "corpse_explosion"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

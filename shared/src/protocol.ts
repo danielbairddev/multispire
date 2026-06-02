@@ -1,7 +1,7 @@
 // Wire protocol between client and server. The server is authoritative; clients
 // send intents and render the per-player view the server pushes back.
 
-import type { CardType, PowerId, TargetKind } from "./cards.js";
+import type { CardType, Character, PowerId, TargetKind } from "./cards.js";
 import type { Loadout } from "./loadout.js";
 
 // ---------- Client -> Server ----------
@@ -44,6 +44,8 @@ export interface CardCatalogEntry {
   upgradable: boolean;
   /** False when this card is only partially modeled and currently disabled. */
   supported: boolean;
+  /** Character pool this card belongs to (for hero filtering in the deckbuilder). */
+  character: Character;
 }
 
 export interface RelicCatalogEntry {

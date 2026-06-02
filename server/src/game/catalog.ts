@@ -24,6 +24,7 @@ export function buildCatalog(): CardCatalogEntry[] {
         upgradedCost: up && up.cost !== c.cost ? up.cost : undefined,
         upgradable: !!c.upgrade,
         supported: isCardSupported(c),
+        character: c.character,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
