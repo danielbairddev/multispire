@@ -115,8 +115,8 @@ export type Effect =
   // --- Defect: orbs & Focus ---
   // Channel `amount` (default 1) orbs of the given type into your orb slots.
   | { kind: "channelOrb"; orb: OrbType; amount?: number }
-  // Evoke your oldest orb (its evoke effect fires `times`, default 1, then the orb
-  // is removed). Dualcast-style cards use times: 2.
+  // Evoke your rightmost orb (its evoke effect fires `times`, default 1, then the
+  // orb is removed). Dualcast uses times: 2, Quadcast times: 4.
   | { kind: "evokeOrb"; times?: number }
   // Evoke ALL of your orbs without removing them (e.g. Tempest-style finisher).
   | { kind: "evokeAllOrbs"; times?: number }

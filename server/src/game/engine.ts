@@ -1406,7 +1406,7 @@ export class GameEngine {
         break;
       }
       case "evokeOrb":
-        this.evokeOldestOrb(source, eff.times ?? 1);
+        this.evokeRightmostOrb(source, eff.times ?? 1);
         break;
       case "evokeAllOrbs": {
         // Evoke every orb (without removing them), e.g. a Tempest-style finisher.
@@ -1879,9 +1879,10 @@ export class GameEngine {
     this.pushLog(`✦ ${p.name} channels ${this.orbName(type)}.`);
   }
 
-  // Evoke the oldest orb `times`, then remove it (Dualcast = twice).
-  private evokeOldestOrb(p: InternalPlayer, times: number): void {
-    const orb = p.orbs.shift();
+  // Evoke the RIGHTMOST (most recently channeled) orb `times`, then remove it
+  // (Dualcast = twice, Quadcast = 4×). Note overflow eviction uses the oldest orb.
+  private evokeRightmostOrb(p: InternalPlayer, times: number): void {
+    const orb = p.orbs.pop();
     if (!orb) return;
     for (let i = 0; i < times; i++) this.evokeOrbEffect(p, orb);
   }
@@ -2622,7 +2623,7 @@ export function describeCard(def: CardDef): string {
         break;
       }
       case "evokeOrb":
-        parts.push((e.times ?? 1) > 1 ? `Evoke your next Orb ${e.times} times` : "Evoke your next Orb");
+        parts.push((e.times ?? 1) > 1 ? `Evoke your rightmost Orb ${e.times} times` : "Evoke your rightmost Orb");
         break;
       case "evokeAllOrbs":
         parts.push((e.times ?? 1) > 1 ? `Evoke all of your Orbs ${e.times} times` : "Evoke all of your Orbs");
