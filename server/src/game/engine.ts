@@ -819,6 +819,11 @@ export class GameEngine {
   }
 
   private finishResolution(): void {
+    // Lightning orbs deal their end-of-turn damage BEFORE Block is cleared below,
+    // so a target's remaining Block can still soak the hit.
+    for (const p of this.players.values()) {
+      if (p.alive) this.tickOrbDamage(p);
+    }
     // End-of-turn upkeep: clear block, tick powers, then start the next turn.
     for (const p of this.players.values()) {
       if (!p.alive) continue;
@@ -834,10 +839,10 @@ export class GameEngine {
       p.powers.delete("reflect");
       this.decayPowers(p);
     }
-    // Defect orbs fire their end-of-turn passives here (after Block is cleared so
-    // Frost block carries into the next turn's incoming attacks).
+    // Frost/Dark/Plasma orb passives fire here (after Block is cleared so Frost
+    // Block carries into the next turn's incoming attacks).
     for (const p of this.players.values()) {
-      if (p.alive) this.tickOrbs(p);
+      if (p.alive) this.tickOrbDefense(p);
     }
     // I Am Invincible: at the end of the turn, auto-play any such card sitting on
     // top of the draw pile. Done after Block is cleared so the Block it grants
@@ -1901,14 +1906,21 @@ export class GameEngine {
     }
   }
 
-  // End-of-turn passive of every channeled orb (left to right).
-  private tickOrbs(p: InternalPlayer): void {
+  // End-of-turn DAMAGE passives (Lightning). These fire BEFORE Block is cleared so
+  // the target's current Block can still absorb the hit.
+  private tickOrbDamage(p: InternalPlayer): void {
+    const focus = p.powers.get("focus") ?? 0;
+    for (const orb of p.orbs) {
+      if (orb.type === "lightning") this.orbDamageRandomEnemy(p, Math.max(0, 3 + focus), "Lightning");
+    }
+  }
+
+  // End-of-turn DEFENSE/utility passives (Frost Block, Dark charge, Plasma Energy).
+  // These fire AFTER Block is cleared so Frost Block carries into the next turn.
+  private tickOrbDefense(p: InternalPlayer): void {
     const focus = p.powers.get("focus") ?? 0;
     for (const orb of p.orbs) {
       switch (orb.type) {
-        case "lightning":
-          this.orbDamageRandomEnemy(p, Math.max(0, 3 + focus), "Lightning");
-          break;
         case "frost":
           this.gainBlock(p, Math.max(0, 2 + focus), "Frost orb");
           break;
@@ -1918,6 +1930,8 @@ export class GameEngine {
         case "plasma":
           p.nextTurnEnergy += 1;
           break;
+        case "lightning":
+          break; // handled in tickOrbDamage (before Block is cleared)
       }
     }
   }
