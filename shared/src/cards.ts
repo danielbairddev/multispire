@@ -7,6 +7,9 @@ export type Rarity = "basic" | "common" | "uncommon" | "rare" | "special";
 
 export type Character = "ironclad" | "silent" | "defect" | "watcher" | "regent" | "neutral";
 
+/** Defect orb kinds. */
+export type OrbType = "lightning" | "frost" | "dark" | "plasma";
+
 /** Who a card is aimed at when played. */
 export type TargetKind =
   | "enemy" // pick a single opponent
@@ -109,6 +112,16 @@ export type Effect =
   // let the player choose `pick` (default 1) to add to a pile (e.g. Quasar
   // discovers a Colorless card). The engine pauses for the pick.
   | { kind: "discover"; character: Character; amount?: number; pick?: number; pile?: "draw" | "hand" }
+  // --- Defect: orbs & Focus ---
+  // Channel `amount` (default 1) orbs of the given type into your orb slots.
+  | { kind: "channelOrb"; orb: OrbType; amount?: number }
+  // Evoke your oldest orb (its evoke effect fires `times`, default 1, then the orb
+  // is removed). Dualcast-style cards use times: 2.
+  | { kind: "evokeOrb"; times?: number }
+  // Evoke ALL of your orbs without removing them (e.g. Tempest-style finisher).
+  | { kind: "evokeAllOrbs"; times?: number }
+  // Increase your maximum orb slots by `amount` (e.g. Capacitor).
+  | { kind: "gainOrbSlots"; amount: number }
   // Add copies of `cardId` to hand until the hand is full (e.g. Crash Landing's
   // "Fill your hand with Debris").
   | { kind: "fillHandWith"; cardId: string }
@@ -318,6 +331,8 @@ export type PowerId =
   | "corpse_explosion"
   // Void Form: the first N cards you play each turn cost 0.
   | "void_form"
+  // Defect Focus: increases the value of Lightning, Frost, and Dark orbs.
+  | "focus"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

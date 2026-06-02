@@ -1447,6 +1447,26 @@ function logClass(text: string): string {
 // A player's battlefield avatar: a colored square with a Block badge floating
 // above its head, a name plate, an HP bar, and power badges below. For enemies
 // this is the click target when picking an attack target.
+// Visual styling for each Defect orb type (icon + colour).
+const ORB_META: Record<string, { icon: string; bg: string; fg: string; name: string }> = {
+  lightning: { icon: "⚡", bg: "#f4d03f", fg: "#222", name: "Lightning" },
+  frost: { icon: "❄", bg: "#5dade2", fg: "#06263b", name: "Frost" },
+  dark: { icon: "🌑", bg: "#7d3c98", fg: "#fff", name: "Dark" },
+  plasma: { icon: "🔆", bg: "#e67e22", fg: "#3a1d00", name: "Plasma" },
+};
+
+function orbChips(p: PlayerView): string {
+  if (!p.orbs.length) return "";
+  const chips = p.orbs
+    .map((o) => {
+      const m = ORB_META[o.type] ?? { icon: "●", bg: "#888", fg: "#fff", name: o.type };
+      const amt = o.type === "dark" && o.amount ? ` ${o.amount}` : "";
+      return `<span class="orbchip" title="${m.name}${amt}" style="background:${m.bg};color:${m.fg}">${m.icon}${amt}</span>`;
+    })
+    .join("");
+  return ` ${chips}`;
+}
+
 function avatar(g: GameView, p: PlayerView, isYou: boolean): HTMLElement {
   // Block "above the head". You see the exact number; opponents only reveal
   // whether they're blocking (fog of war), so show a shield with no count.
@@ -1472,6 +1492,9 @@ function avatar(g: GameView, p: PlayerView, isYou: boolean): HTMLElement {
     ? `<div class="avstars">✦ ${isYou ? (p.stars ?? 0) : "?"} Stars${p.forge ? ` · ⚒️ ${p.forge}` : ""}</div>`
     : "";
 
+  // Defect orbs (public). Coloured chips, oldest on the left; Dark shows its charge.
+  const orbs = p.usesOrbs ? `<div class="avorbs">🔮 ${p.orbs.length}/${p.orbSlots}${orbChips(p)}</div>` : "";
+
   const node = el(`
     <div class="avatarbox ${isYou ? "you" : "foe"} ${p.alive ? "" : "dead"}" ${isYou ? "" : `data-enemy="${p.id}"`}>
       ${blockBadge}
@@ -1487,6 +1510,7 @@ function avatar(g: GameView, p: PlayerView, isYou: boolean): HTMLElement {
         <span>${p.hp}/${p.maxHp}</span></div>
       ${energy}
       ${stars}
+      ${orbs}
       <div class="powers">${powerBadges(p)}</div>
     </div>`);
   node.querySelector(".buildbtn")!.addEventListener("click", (ev) => {

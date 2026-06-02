@@ -86,6 +86,40 @@ export function silentDemoDeck(): DeckList {
   ];
 }
 
+// The Defect's starter: Strikes/Defends plus Zap (channel Lightning) and
+// Dualcast (evoke), the two cards the whole orb game is built around.
+export function defectStarterDeck(): DeckList {
+  return [
+    ...Array.from({ length: 4 }, () => ({ id: "strike_d" })),
+    ...Array.from({ length: 4 }, () => ({ id: "defend_d" })),
+    { id: "zap" },
+    { id: "dualcast" },
+  ];
+}
+
+// A rounded ~20-card Defect demo build: orb generators across all four orb types,
+// a Focus engine to scale them, extra orb slots, and a couple of evoke payoffs.
+export function defectDemoDeck(): DeckList {
+  return [
+    ...Array.from({ length: 4 }, () => ({ id: "strike_d" })),
+    ...Array.from({ length: 3 }, () => ({ id: "defend_d" })),
+    { id: "zap" },
+    { id: "dualcast" },
+    { id: "ball_lightning" },
+    { id: "cold_snap" },
+    { id: "coolheaded" },
+    { id: "beam_cell" },
+    { id: "glacier" },
+    { id: "darkness" },
+    { id: "defragment" },
+    { id: "capacitor" },
+    { id: "electrodynamics" },
+    { id: "core_surge" },
+    { id: "skim" },
+    { id: "meteor_strike_d" },
+  ];
+}
+
 // The default deck everyone gets if they press Play without importing a loadout.
 // A rounded ~20-card Ironclad build: reliable damage, enough block to survive a
 // few turns, a couple of debuff/scaling options, and one power so games have an

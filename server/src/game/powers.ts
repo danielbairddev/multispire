@@ -105,6 +105,8 @@ export const POWERS: Record<string, PowerDef> = {
   corpse_explosion: { id: "corpse_explosion", name: "Corpse Explosion", kind: "debuff" },
   // Void Form: the first N cards you play each turn cost 0.
   void_form: { id: "void_form", name: "Void Form", kind: "buff" },
+  // Focus: increases the value of Lightning, Frost, and Dark orbs.
+  focus: { id: "focus", name: "Focus", kind: "buff" },
 };
 
 export function getPower(id: PowerId): PowerDef {

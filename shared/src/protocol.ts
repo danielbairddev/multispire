@@ -1,7 +1,13 @@
 // Wire protocol between client and server. The server is authoritative; clients
 // send intents and render the per-player view the server pushes back.
 
-import type { CardType, Character, PowerId, TargetKind } from "./cards.js";
+import type { CardType, Character, OrbType, PowerId, TargetKind } from "./cards.js";
+
+/** A single channeled Defect orb. `amount` is the stored value (Dark orbs grow). */
+export interface OrbView {
+  type: OrbType;
+  amount: number;
+}
 import type { Loadout } from "./loadout.js";
 
 // ---------- Client -> Server ----------
@@ -156,6 +162,12 @@ export interface PlayerView {
   forge: number;
   /** Whether this player uses the Regent's Star/Forge resources (HUD gating). */
   usesStars: boolean;
+  /** Defect orbs currently channeled (public, left = oldest). Empty if unused. */
+  orbs: OrbView[];
+  /** Maximum orb slots (Defect). 0 if this player doesn't use orbs. */
+  orbSlots: number;
+  /** Whether this player uses Defect orbs (HUD gating). */
+  usesOrbs: boolean;
   powers: PowerView[];
   handCount: number;
   drawCount: number;

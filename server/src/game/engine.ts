@@ -6,6 +6,7 @@ import type {
   Effect,
   GameView,
   LogEntry,
+  OrbType,
   PendingAttackView,
   PendingChoiceView,
   PlayerBuild,
@@ -133,6 +134,13 @@ interface InternalPlayer {
   nextTurnDraw: number;
   // One-shot: keep the whole hand at the next end-of-turn cleanup (Convergence).
   retainHandOnce: boolean;
+  // --- Defect resources ---
+  // Channeled orbs (left = oldest). Dark orbs store an accumulating `amount`.
+  orbs: { type: OrbType; amount: number }[];
+  // Maximum orbs that can be held at once.
+  orbSlots: number;
+  // True for Defect players (deck contains Defect cards): surface the orb HUD.
+  usesOrbs: boolean;
   seedDeck: DeckList; // the build they brought, for the build viewer
 }
 
@@ -263,6 +271,9 @@ export class GameEngine {
       nextTurnBlock: 0,
       nextTurnDraw: 0,
       retainHandOnce: false,
+      orbs: [],
+      orbSlots: 3,
+      usesOrbs: seed.deck.some((spec) => resolveCard(spec.id, false)?.character === "defect"),
       seedDeck: seed.deck,
     };
     // Apply relic starting effects (self-targeted ones; enemy-targeted ones like
@@ -823,6 +834,11 @@ export class GameEngine {
       p.powers.delete("reflect");
       this.decayPowers(p);
     }
+    // Defect orbs fire their end-of-turn passives here (after Block is cleared so
+    // Frost block carries into the next turn's incoming attacks).
+    for (const p of this.players.values()) {
+      if (p.alive) this.tickOrbs(p);
+    }
     // I Am Invincible: at the end of the turn, auto-play any such card sitting on
     // top of the draw pile. Done after Block is cleared so the Block it grants
     // carries into the next turn's incoming attacks.
@@ -1379,6 +1395,25 @@ export class GameEngine {
       case "gainStars":
         this.gainStars(source, eff.amount);
         break;
+      case "channelOrb": {
+        const n = eff.amount ?? 1;
+        for (let i = 0; i < n; i++) this.channelOrb(source, eff.orb);
+        break;
+      }
+      case "evokeOrb":
+        this.evokeOldestOrb(source, eff.times ?? 1);
+        break;
+      case "evokeAllOrbs": {
+        // Evoke every orb (without removing them), e.g. a Tempest-style finisher.
+        const times = eff.times ?? 1;
+        for (const orb of source.orbs) for (let i = 0; i < times; i++) this.evokeOrbEffect(source, orb);
+        break;
+      }
+      case "gainOrbSlots":
+        source.usesOrbs = true;
+        source.orbSlots += eff.amount;
+        this.pushLog(`✦ ${source.name} gains ${eff.amount} Orb slot${eff.amount > 1 ? "s" : ""}.`);
+        break;
       case "forge": {
         const otherAttacks = Math.max(0, source.attacksThisTurn - 1);
         const amount = eff.amount + (eff.perOtherAttackThisTurn ?? 0) * otherAttacks;
@@ -1821,6 +1856,84 @@ export class GameEngine {
     this.pushLog(`✦ ${p.name} forges the Sovereign Blade.`);
   }
 
+  // ----------------------------------------------------------------- Defect orbs
+
+  private orbName(t: OrbType): string {
+    return t === "lightning" ? "Lightning" : t === "frost" ? "Frost" : t === "dark" ? "Dark" : "Plasma";
+  }
+
+  // Channel a new orb. If the slots are full, the oldest orb is Evoked and removed
+  // to make room (matching the Defect's orb overflow).
+  private channelOrb(p: InternalPlayer, type: OrbType): void {
+    p.usesOrbs = true;
+    if (p.orbs.length >= p.orbSlots && p.orbs.length > 0) {
+      const evicted = p.orbs.shift()!;
+      this.evokeOrbEffect(p, evicted);
+    }
+    p.orbs.push({ type, amount: 0 });
+    this.pushLog(`✦ ${p.name} channels ${this.orbName(type)}.`);
+  }
+
+  // Evoke the oldest orb `times`, then remove it (Dualcast = twice).
+  private evokeOldestOrb(p: InternalPlayer, times: number): void {
+    const orb = p.orbs.shift();
+    if (!orb) return;
+    for (let i = 0; i < times; i++) this.evokeOrbEffect(p, orb);
+  }
+
+  // The Evoke (burst) effect of an orb. Lightning/Frost/Dark scale with Focus.
+  private evokeOrbEffect(p: InternalPlayer, orb: { type: OrbType; amount: number }): void {
+    const focus = p.powers.get("focus") ?? 0;
+    switch (orb.type) {
+      case "lightning":
+        this.orbDamageRandomEnemy(p, Math.max(0, 8 + focus), "Lightning");
+        break;
+      case "frost":
+        this.gainBlock(p, Math.max(0, 5 + focus), "Frost orb");
+        break;
+      case "dark":
+        if (orb.amount > 0) this.orbDamageRandomEnemy(p, orb.amount, "Dark");
+        break;
+      case "plasma":
+        p.energy += 2;
+        this.pushLog(`✦ ${p.name} evokes Plasma (+2 Energy).`);
+        break;
+    }
+  }
+
+  // End-of-turn passive of every channeled orb (left to right).
+  private tickOrbs(p: InternalPlayer): void {
+    const focus = p.powers.get("focus") ?? 0;
+    for (const orb of p.orbs) {
+      switch (orb.type) {
+        case "lightning":
+          this.orbDamageRandomEnemy(p, Math.max(0, 3 + focus), "Lightning");
+          break;
+        case "frost":
+          this.gainBlock(p, Math.max(0, 2 + focus), "Frost orb");
+          break;
+        case "dark":
+          orb.amount += Math.max(0, 6 + focus);
+          break;
+        case "plasma":
+          p.nextTurnEnergy += 1;
+          break;
+      }
+    }
+  }
+
+  private orbDamageRandomEnemy(p: InternalPlayer, amount: number, label: string): void {
+    if (amount <= 0) return;
+    const enemies = this.aliveEnemies(p.id);
+    if (enemies.length === 0) return;
+    const targetId = enemies[Math.floor(this.rng() * enemies.length)];
+    const tgt = this.players.get(targetId)!;
+    const dealt = this.computeDamage(amount, p, tgt, false);
+    this.dealDamage(tgt, dealt);
+    this.pushLog(`✦ ${p.name}'s ${label} orb hits ${tgt.name} for ${dealt}.`);
+    this.checkDeaths();
+  }
+
   // Whenever you create a card: track the count and fire create-reactive powers
   // (Arsenal gains Strength, Pillar of Creation gains Block).
   private onCardCreated(p: InternalPlayer, count: number): void {
@@ -2208,6 +2321,9 @@ export class GameEngine {
       stars: isSelf ? p.stars : null,
       forge: p.forge,
       usesStars: p.usesStars,
+      orbs: p.orbs.map((o) => ({ type: o.type, amount: o.amount })),
+      orbSlots: p.usesOrbs ? p.orbSlots : 0,
+      usesOrbs: p.usesOrbs,
       powers,
       handCount: p.hand.length,
       drawCount: p.draw.length,
@@ -2485,6 +2601,21 @@ export function describeCard(def: CardDef): string {
         parts.push(`Deal ${e.amount} damage${tgt} X times${dbl}`);
         break;
       }
+      case "channelOrb": {
+        const n = e.amount ?? 1;
+        const name = e.orb === "lightning" ? "Lightning" : e.orb === "frost" ? "Frost" : e.orb === "dark" ? "Dark" : "Plasma";
+        parts.push(`Channel ${n} ${name}`);
+        break;
+      }
+      case "evokeOrb":
+        parts.push((e.times ?? 1) > 1 ? `Evoke your next Orb ${e.times} times` : "Evoke your next Orb");
+        break;
+      case "evokeAllOrbs":
+        parts.push((e.times ?? 1) > 1 ? `Evoke all of your Orbs ${e.times} times` : "Evoke all of your Orbs");
+        break;
+      case "gainOrbSlots":
+        parts.push(`Gain ${e.amount} Orb slot${e.amount > 1 ? "s" : ""}`);
+        break;
       case "unimplemented":
         parts.push("(unimplemented)");
         break;

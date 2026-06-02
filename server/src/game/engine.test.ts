@@ -1183,4 +1183,66 @@ const energyOf = (g: GameEngine, id: string) =>
   assert(energyOf(g, "a") === 2, "Void cost 1 Energy when drawn (3 -> 2), got " + energyOf(g, "a"));
 }
 
+// --- Defect: orbs (channel / passive / evoke / Focus / overflow) ---
+function defectSolo(deckA: Spec[], seed = 9, hp = 200) {
+  const g = new GameEngine("defect", seededRng(seed));
+  g.addPlayer({ id: "a", name: "A", deck: deckA, maxHp: hp });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: hp });
+  g.start();
+  return g;
+}
+const orbsOf = (g: GameEngine, id: string) => g.viewFor(id).players.find((p) => p.id === id)!.orbs;
+const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }));
+
+// Zap channels a Lightning orb; its end-of-turn passive deals 3.
+{
+  const g = defectSolo([{ id: "zap" }, ...fillD(4)]);
+  ensure(g, "a");
+  assert(play(g, "a", "zap") === null, "Zap plays");
+  assert(orbsOf(g, "a").length === 1 && orbsOf(g, "a")[0].type === "lightning", "Lightning orb channeled");
+  const before = hpOf(g, "b");
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 3, "Lightning passive deals 3 at end of turn, got " + (before - hpOf(g, "b")));
+}
+
+// Dualcast evokes the oldest orb twice (Lightning evoke = 8 each).
+{
+  const g = defectSolo([{ id: "zap" }, { id: "dualcast" }, ...fillD(3)]);
+  ensure(g, "a");
+  play(g, "a", "zap");
+  const before = hpOf(g, "b");
+  assert(play(g, "a", "dualcast") === null, "Dualcast plays");
+  assert(before - hpOf(g, "b") === 16, "Dualcast evokes Lightning twice (8+8), got " + (before - hpOf(g, "b")));
+  assert(orbsOf(g, "a").length === 0, "the orb is consumed by Dualcast");
+}
+
+// Frost orb passive grants Block that carries into the next turn.
+{
+  const g = defectSolo([{ id: "cold_snap" }, ...fillD(4)]);
+  assert(play(g, "a", "cold_snap", "b") === null, "Cold Snap plays");
+  finishTurn(g);
+  assert(blockOf(g, "a") === 2, "Frost passive grants 2 Block, got " + blockOf(g, "a"));
+}
+
+// Focus increases orb output (Lightning passive 3 -> 4 with 1 Focus).
+{
+  const g = defectSolo([{ id: "defragment" }, { id: "zap" }, ...fillD(3)]);
+  play(g, "a", "defragment");
+  play(g, "a", "zap");
+  const before = hpOf(g, "b");
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 4, "Lightning passive scales with Focus (3+1), got " + (before - hpOf(g, "b")));
+}
+
+// Channeling into full slots evokes (and removes) the oldest orb.
+{
+  const g = defectSolo([{ id: "electrodynamics", upgraded: true }, { id: "zap" }, ...fillD(3)]);
+  play(g, "a", "electrodynamics"); // channel 3 Lightning (slots full)
+  assert(orbsOf(g, "a").length === 3, "three orbs after Electrodynamics+");
+  const before = hpOf(g, "b");
+  play(g, "a", "zap"); // 4th channel -> oldest Lightning is evoked (8)
+  assert(before - hpOf(g, "b") === 8, "overflow evokes the oldest orb (8), got " + (before - hpOf(g, "b")));
+  assert(orbsOf(g, "a").length === 3, "still 3 orbs after overflow");
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

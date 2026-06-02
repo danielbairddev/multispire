@@ -1,12 +1,19 @@
 import type { CardDef } from "@multispire/shared";
 import { reportMissing } from "../missing.js";
+import { DEFECT_CARDS } from "./defect.js";
 import { IRONCLAD_CARDS } from "./ironclad.js";
 import { NEUTRAL_CARDS } from "./neutral.js";
 import { REGENT_CARDS } from "./regent.js";
 import { SILENT_CARDS } from "./silent.js";
 
 // All known cards, indexed by id. Future characters register their arrays here.
-const ALL: CardDef[] = [...IRONCLAD_CARDS, ...NEUTRAL_CARDS, ...REGENT_CARDS, ...SILENT_CARDS];
+const ALL: CardDef[] = [
+  ...IRONCLAD_CARDS,
+  ...NEUTRAL_CARDS,
+  ...REGENT_CARDS,
+  ...SILENT_CARDS,
+  ...DEFECT_CARDS,
+];
 
 /**
  * Whether cards whose real behavior is only partially modeled (`approx: true`)
@@ -160,6 +167,20 @@ const CARD_ALIASES: Record<string, string> = {
   glassknife: "glass_knife",
   wraithform: "wraith_form",
   corpseexplosion: "corpse_explosion",
+  // ---- Defect ----
+  striked: "strike_d",
+  defendd: "defend_d",
+  balllightning: "ball_lightning",
+  beamcell: "beam_cell",
+  chargebattery: "charge_battery",
+  coldsnap: "cold_snap",
+  gofortheeyes: "go_for_the_eyes",
+  steambarrier: "steam_barrier",
+  sweepingbeam: "sweeping_beam",
+  doomandgloom: "doom_and_gloom",
+  meteorstrike: "meteor_strike_d",
+  biasedcognition: "biased_cognition",
+  coresurge: "core_surge",
 };
 
 /**
