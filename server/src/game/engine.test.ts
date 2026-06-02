@@ -1234,15 +1234,35 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert(before - hpOf(g, "b") === 4, "Lightning passive scales with Focus (3+1), got " + (before - hpOf(g, "b")));
 }
 
-// Channeling into full slots evokes (and removes) the oldest orb.
+// Channeling into full slots evokes one orb (keeping the count at the slot max).
 {
-  const g = defectSolo([{ id: "electrodynamics", upgraded: true }, { id: "zap" }, ...fillD(3)]);
-  play(g, "a", "electrodynamics"); // channel 3 Lightning (slots full)
-  assert(orbsOf(g, "a").length === 3, "three orbs after Electrodynamics+");
-  const before = hpOf(g, "b");
-  play(g, "a", "zap"); // 4th channel -> oldest Lightning is evoked (8)
-  assert(before - hpOf(g, "b") === 8, "overflow evokes the oldest orb (8), got " + (before - hpOf(g, "b")));
+  // Glacier (2 Frost) + Chill (1 Frost) fills the 3 slots; Cold Snap channels a
+  // 4th Frost, so one Frost is evoked on overflow (+5 Block) and the count holds.
+  const g = defectSolo([{ id: "glacier" }, { id: "chill" }, { id: "cold_snap" }, ...fillD(2)]);
+  play(g, "a", "glacier"); // 2 Frost, +6 Block
+  play(g, "a", "chill"); // 3rd Frost (slots full)
+  assert(orbsOf(g, "a").length === 3, "three orbs before overflow");
+  const blockBefore = blockOf(g, "a") ?? 0;
+  play(g, "a", "cold_snap", "b"); // channel 4th Frost -> overflow evokes a Frost (+5 Block)
+  assert((blockOf(g, "a") ?? 0) - blockBefore === 5, "overflow evoked a Frost orb for 5 Block");
   assert(orbsOf(g, "a").length === 3, "still 3 orbs after overflow");
+}
+
+// Glass orb: channels at 4, deals its value to all enemies each turn, then decays.
+{
+  const g = defectSolo([{ id: "glasswork" }, ...fillD(4)]);
+  play(g, "a", "glasswork"); // Gain 5 Block, Channel 1 Glass (value 4)
+  assert(
+    orbsOf(g, "a").some((o) => o.type === "glass" && o.amount === 4),
+    "Glass orb channeled at value 4",
+  );
+  const before = hpOf(g, "b");
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 4, "Glass passive deals 4 to all enemies, got " + (before - hpOf(g, "b")));
+  assert(
+    orbsOf(g, "a").some((o) => o.type === "glass" && o.amount === 3),
+    "Glass orb decayed to 3 after firing",
+  );
 }
 
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

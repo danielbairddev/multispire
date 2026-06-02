@@ -177,10 +177,13 @@ const CARD_ALIASES: Record<string, string> = {
   gofortheeyes: "go_for_the_eyes",
   steambarrier: "steam_barrier",
   sweepingbeam: "sweeping_beam",
-  doomandgloom: "doom_and_gloom",
   meteorstrike: "meteor_strike_d",
   biasedcognition: "biased_cognition",
-  coresurge: "core_surge",
+  focusedstrike: "focused_strike",
+  bulkup: "bulk_up",
+  doubleenergy: "double_energy",
+  icelance: "ice_lance",
+  boostaway: "boost_away",
 };
 
 /**

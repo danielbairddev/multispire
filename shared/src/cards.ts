@@ -8,7 +8,7 @@ export type Rarity = "basic" | "common" | "uncommon" | "rare" | "special";
 export type Character = "ironclad" | "silent" | "defect" | "watcher" | "regent" | "neutral";
 
 /** Defect orb kinds. */
-export type OrbType = "lightning" | "frost" | "dark" | "plasma";
+export type OrbType = "lightning" | "frost" | "dark" | "plasma" | "glass";
 
 /** Who a card is aimed at when played. */
 export type TargetKind =
@@ -55,7 +55,7 @@ export type Effect =
   | { kind: "block"; amount: number }
   | { kind: "applyPower"; power: PowerId; amount: number; to: "enemy" | "self" }
   | { kind: "draw"; amount: number }
-  | { kind: "gainEnergy"; amount: number }
+  | { kind: "gainEnergy"; amount: number; doubleCurrent?: boolean }
   | { kind: "loseHp"; amount: number } // self damage that ignores block
   | { kind: "heal"; amount: number }
   // Damage equal to the caster's current block (e.g. Body Slam).

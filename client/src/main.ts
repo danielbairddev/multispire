@@ -1453,6 +1453,7 @@ const ORB_META: Record<string, { icon: string; bg: string; fg: string; name: str
   frost: { icon: "❄", bg: "#5dade2", fg: "#06263b", name: "Frost" },
   dark: { icon: "🌑", bg: "#7d3c98", fg: "#fff", name: "Dark" },
   plasma: { icon: "🔆", bg: "#e67e22", fg: "#3a1d00", name: "Plasma" },
+  glass: { icon: "🔷", bg: "#aed6f1", fg: "#06263b", name: "Glass" },
 };
 
 function orbChips(p: PlayerView): string {
@@ -1460,7 +1461,7 @@ function orbChips(p: PlayerView): string {
   const chips = p.orbs
     .map((o) => {
       const m = ORB_META[o.type] ?? { icon: "●", bg: "#888", fg: "#fff", name: o.type };
-      const amt = o.type === "dark" && o.amount ? ` ${o.amount}` : "";
+      const amt = (o.type === "dark" || o.type === "glass") && o.amount ? ` ${o.amount}` : "";
       return `<span class="orbchip" title="${m.name}${amt}" style="background:${m.bg};color:${m.fg}">${m.icon}${amt}</span>`;
     })
     .join("");

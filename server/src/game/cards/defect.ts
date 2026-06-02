@@ -1,11 +1,13 @@
 import type { CardDef } from "@multispire/shared";
 
 // Defect card definitions. Pure functional game data (name + numbers), no flavor
-// text. The Defect's signature system is Orbs: Lightning (end-of-turn damage),
-// Frost (end-of-turn Block), Dark (charges, then bursts), and Plasma (Energy),
-// scaled by Focus. Channel adds an orb; Evoke fires an orb's burst and removes it.
+// text. Values follow Slay the Spire 2. Signature system: Orbs — Lightning
+// (end-of-turn damage), Frost (Block), Dark (charges, then bursts at lowest-HP),
+// Plasma (Energy), and Glass (AoE damage that decays), scaled by Focus. Channel
+// adds an orb; Evoke fires the rightmost orb's burst and removes it.
 //
-// To add a card: append a CardDef here. The registry picks it up automatically.
+// This set is being reconciled to StS2; see docs/STS2_AUDIT.md for the remaining
+// cards still to add and the effects still approximated.
 
 export const DEFECT_CARDS: CardDef[] = [
   // ---- Starter ----
@@ -94,6 +96,25 @@ export const DEFECT_CARDS: CardDef[] = [
     },
   },
   {
+    id: "boost_away",
+    name: "Boost Away",
+    character: "defect",
+    type: "skill",
+    rarity: "common",
+    cost: 0,
+    target: "self",
+    effects: [
+      { kind: "block", amount: 6 },
+      { kind: "addCardToPile", cardId: "dazed", amount: 1, pile: "discard" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 9 },
+        { kind: "addCardToPile", cardId: "dazed", amount: 1, pile: "discard" },
+      ],
+    },
+  },
+  {
     id: "charge_battery",
     name: "Charge Battery",
     character: "defect",
@@ -151,6 +172,25 @@ export const DEFECT_CARDS: CardDef[] = [
     },
   },
   {
+    id: "focused_strike",
+    name: "Focused Strike",
+    character: "defect",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 9 },
+      { kind: "applyPower", power: "focus", amount: 1, to: "self" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 11 },
+        { kind: "applyPower", power: "focus", amount: 2, to: "self" },
+      ],
+    },
+  },
+  {
     id: "go_for_the_eyes",
     name: "Go for the Eyes",
     character: "defect",
@@ -158,27 +198,29 @@ export const DEFECT_CARDS: CardDef[] = [
     rarity: "common",
     cost: 0,
     target: "enemy",
+    // StS2: apply Weak only if the enemy intends to attack (modeled as: an
+    // opponent has already queued an attack on you this turn).
     effects: [
       { kind: "damage", amount: 3 },
-      { kind: "applyPower", power: "weak", amount: 1, to: "enemy" },
+      { kind: "ifIncomingAttack", then: [{ kind: "applyPower", power: "weak", amount: 1, to: "enemy" }] },
     ],
     upgrade: {
       effects: [
         { kind: "damage", amount: 4 },
-        { kind: "applyPower", power: "weak", amount: 2, to: "enemy" },
+        { kind: "ifIncomingAttack", then: [{ kind: "applyPower", power: "weak", amount: 2, to: "enemy" }] },
       ],
     },
   },
   {
-    id: "steam_barrier",
-    name: "Steam Barrier",
+    id: "leap",
+    name: "Leap",
     character: "defect",
     type: "skill",
     rarity: "common",
-    cost: 0,
+    cost: 1,
     target: "self",
-    effects: [{ kind: "block", amount: 6 }],
-    upgrade: { effects: [{ kind: "block", amount: 8 }] },
+    effects: [{ kind: "block", amount: 9 }],
+    upgrade: { effects: [{ kind: "block", amount: 12 }] },
   },
   {
     id: "sweeping_beam",
@@ -201,7 +243,7 @@ export const DEFECT_CARDS: CardDef[] = [
   },
   {
     id: "turbo",
-    name: "Turbo",
+    name: "TURBO",
     character: "defect",
     type: "skill",
     rarity: "common",
@@ -221,97 +263,24 @@ export const DEFECT_CARDS: CardDef[] = [
 
   // ---- Uncommons ----
   {
-    id: "chill",
-    name: "Chill",
-    character: "defect",
-    type: "skill",
-    rarity: "uncommon",
-    cost: 0,
-    target: "self",
-    exhaust: true,
-    // One Frost per enemy; in a duel that's a single Frost.
-    effects: [{ kind: "channelOrb", orb: "frost" }],
-    upgrade: { effects: [{ kind: "channelOrb", orb: "frost" }] },
-  },
-  {
-    id: "consume",
-    name: "Consume",
-    character: "defect",
-    type: "skill",
-    rarity: "uncommon",
-    cost: 2,
-    target: "self",
-    effects: [
-      { kind: "applyPower", power: "focus", amount: 2, to: "self" },
-      { kind: "gainOrbSlots", amount: -1 },
-    ],
-    upgrade: {
-      effects: [
-        { kind: "applyPower", power: "focus", amount: 3, to: "self" },
-        { kind: "gainOrbSlots", amount: -1 },
-      ],
-    },
-  },
-  {
-    id: "darkness",
-    name: "Darkness",
-    character: "defect",
-    type: "skill",
-    rarity: "uncommon",
-    cost: 1,
-    target: "self",
-    effects: [{ kind: "channelOrb", orb: "dark" }],
-    upgrade: { cost: 1, effects: [{ kind: "channelOrb", orb: "dark" }] },
-  },
-  {
-    id: "defragment",
-    name: "Defragment",
+    id: "bulk_up",
+    name: "Bulk Up",
     character: "defect",
     type: "power",
     rarity: "uncommon",
-    cost: 1,
-    target: "self",
-    effects: [{ kind: "applyPower", power: "focus", amount: 1, to: "self" }],
-    upgrade: { effects: [{ kind: "applyPower", power: "focus", amount: 2, to: "self" }] },
-  },
-  {
-    id: "doom_and_gloom",
-    name: "Doom and Gloom",
-    character: "defect",
-    type: "attack",
-    rarity: "uncommon",
     cost: 2,
-    target: "all_enemies",
+    target: "self",
+    // Lose 1 Orb Slot. Gain Strength and Dexterity.
     effects: [
-      { kind: "damage", amount: 10 },
-      { kind: "channelOrb", orb: "dark" },
+      { kind: "gainOrbSlots", amount: -1 },
+      { kind: "applyPower", power: "strength", amount: 2, to: "self" },
+      { kind: "applyPower", power: "dexterity", amount: 2, to: "self" },
     ],
     upgrade: {
       effects: [
-        { kind: "damage", amount: 14 },
-        { kind: "channelOrb", orb: "dark" },
-      ],
-    },
-  },
-  {
-    id: "glacier",
-    name: "Glacier",
-    character: "defect",
-    type: "skill",
-    rarity: "uncommon",
-    cost: 2,
-    target: "self",
-    // StS2: Gain 6 (9 upgraded) Block. Channel 2 Frost.
-    effects: [
-      { kind: "block", amount: 6 },
-      { kind: "channelOrb", orb: "frost" },
-      { kind: "channelOrb", orb: "frost" },
-    ],
-    upgrade: {
-      effects: [
-        { kind: "block", amount: 9 },
-        { kind: "channelOrb", orb: "frost" },
-        { kind: "channelOrb", orb: "frost" },
+        { kind: "gainOrbSlots", amount: -1 },
+        { kind: "applyPower", power: "strength", amount: 3, to: "self" },
+        { kind: "applyPower", power: "dexterity", amount: 3, to: "self" },
       ],
     },
   },
@@ -327,15 +296,113 @@ export const DEFECT_CARDS: CardDef[] = [
     upgrade: { effects: [{ kind: "gainOrbSlots", amount: 3 }] },
   },
   {
-    id: "skim",
-    name: "Skim",
+    id: "chill",
+    name: "Chill",
+    character: "defect",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 0,
+    target: "self",
+    exhaust: true,
+    // One Frost per enemy; in a duel that's a single Frost.
+    effects: [{ kind: "channelOrb", orb: "frost" }],
+    upgrade: { effects: [{ kind: "channelOrb", orb: "frost" }] },
+  },
+  {
+    id: "darkness",
+    name: "Darkness",
     character: "defect",
     type: "skill",
     rarity: "uncommon",
     cost: 1,
     target: "self",
-    effects: [{ kind: "draw", amount: 3 }],
-    upgrade: { effects: [{ kind: "draw", amount: 4 }] },
+    // StS2 also triggers the passive of all Dark orbs; that rider isn't modeled yet.
+    effects: [{ kind: "channelOrb", orb: "dark" }],
+    upgrade: { effects: [{ kind: "channelOrb", orb: "dark" }] },
+  },
+  {
+    id: "double_energy",
+    name: "Double Energy",
+    character: "defect",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    exhaust: true,
+    effects: [{ kind: "gainEnergy", amount: 0, doubleCurrent: true }],
+    upgrade: { effects: [{ kind: "gainEnergy", amount: 0, doubleCurrent: true }] },
+  },
+  {
+    id: "fusion",
+    name: "Fusion",
+    character: "defect",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 2,
+    target: "self",
+    effects: [{ kind: "channelOrb", orb: "plasma" }],
+    upgrade: { cost: 1, effects: [{ kind: "channelOrb", orb: "plasma" }] },
+  },
+  {
+    id: "glasswork",
+    name: "Glasswork",
+    character: "defect",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    effects: [
+      { kind: "block", amount: 5 },
+      { kind: "channelOrb", orb: "glass" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 8 },
+        { kind: "channelOrb", orb: "glass" },
+      ],
+    },
+  },
+  {
+    id: "glacier",
+    name: "Glacier",
+    character: "defect",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 2,
+    target: "self",
+    effects: [
+      { kind: "block", amount: 6 },
+      { kind: "channelOrb", orb: "frost" },
+      { kind: "channelOrb", orb: "frost" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 9 },
+        { kind: "channelOrb", orb: "frost" },
+        { kind: "channelOrb", orb: "frost" },
+      ],
+    },
+  },
+  {
+    id: "null_d",
+    name: "Null",
+    character: "defect",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 2,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 10 },
+      { kind: "applyPower", power: "weak", amount: 2, to: "enemy" },
+      { kind: "channelOrb", orb: "dark" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 13 },
+        { kind: "applyPower", power: "weak", amount: 3, to: "enemy" },
+        { kind: "channelOrb", orb: "dark" },
+      ],
+    },
   },
   {
     id: "overclock",
@@ -364,7 +431,6 @@ export const DEFECT_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "enemy",
-    // StS2: Deal 7 (10 upgraded) damage. Draw 4 (5) cards.
     effects: [
       { kind: "damage", amount: 7 },
       { kind: "draw", amount: 4 },
@@ -377,57 +443,39 @@ export const DEFECT_CARDS: CardDef[] = [
     },
   },
   {
-    id: "biased_cognition",
-    name: "Biased Cognition",
+    id: "skim",
+    name: "Skim",
     character: "defect",
-    type: "power",
+    type: "skill",
     rarity: "uncommon",
     cost: 1,
     target: "self",
-    effects: [{ kind: "applyPower", power: "focus", amount: 4, to: "self" }],
-    upgrade: { effects: [{ kind: "applyPower", power: "focus", amount: 5, to: "self" }] },
+    effects: [{ kind: "draw", amount: 3 }],
+    upgrade: { effects: [{ kind: "draw", amount: 4 }] },
+  },
+  {
+    id: "sunder",
+    name: "Sunder",
+    character: "defect",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 3,
+    target: "enemy",
+    effects: [{ kind: "damage", amount: 24 }],
+    upgrade: { effects: [{ kind: "damage", amount: 32 }] },
   },
 
   // ---- Rares ----
   {
-    id: "core_surge",
-    name: "Core Surge",
-    character: "defect",
-    type: "attack",
-    rarity: "rare",
-    cost: 1,
-    target: "enemy",
-    exhaust: true,
-    effects: [
-      { kind: "damage", amount: 11 },
-      { kind: "applyPower", power: "artifact", amount: 1, to: "self" },
-    ],
-    upgrade: {
-      effects: [
-        { kind: "damage", amount: 15 },
-        { kind: "applyPower", power: "artifact", amount: 1, to: "self" },
-      ],
-    },
-  },
-  {
-    id: "electrodynamics",
-    name: "Electrodynamics",
+    id: "defragment",
+    name: "Defragment",
     character: "defect",
     type: "power",
     rarity: "rare",
-    cost: 2,
+    cost: 1,
     target: "self",
-    effects: [
-      { kind: "channelOrb", orb: "lightning" },
-      { kind: "channelOrb", orb: "lightning" },
-    ],
-    upgrade: {
-      effects: [
-        { kind: "channelOrb", orb: "lightning" },
-        { kind: "channelOrb", orb: "lightning" },
-        { kind: "channelOrb", orb: "lightning" },
-      ],
-    },
+    effects: [{ kind: "applyPower", power: "focus", amount: 1, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "focus", amount: 2, to: "self" }] },
   },
   {
     id: "hyperbeam",
@@ -445,6 +493,29 @@ export const DEFECT_CARDS: CardDef[] = [
       effects: [
         { kind: "damage", amount: 34 },
         { kind: "applyPower", power: "focus", amount: -3, to: "self" },
+      ],
+    },
+  },
+  {
+    id: "ice_lance",
+    name: "Ice Lance",
+    character: "defect",
+    type: "attack",
+    rarity: "rare",
+    cost: 3,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 19 },
+      { kind: "channelOrb", orb: "frost" },
+      { kind: "channelOrb", orb: "frost" },
+      { kind: "channelOrb", orb: "frost" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 24 },
+        { kind: "channelOrb", orb: "frost" },
+        { kind: "channelOrb", orb: "frost" },
+        { kind: "channelOrb", orb: "frost" },
       ],
     },
   },
@@ -494,27 +565,80 @@ export const DEFECT_CARDS: CardDef[] = [
     },
   },
   {
-    id: "tempest",
-    name: "Tempest",
+    id: "refract",
+    name: "Refract",
     character: "defect",
-    type: "skill",
-    rarity: "rare",
-    cost: 2,
-    target: "self",
-    exhaust: true,
-    // Channel a burst of Lightning (fixed in this engine; the real card scales on X).
+    type: "attack",
+    rarity: "uncommon",
+    cost: 3,
+    target: "enemy",
     effects: [
-      { kind: "channelOrb", orb: "lightning" },
-      { kind: "channelOrb", orb: "lightning" },
-      { kind: "channelOrb", orb: "lightning" },
+      { kind: "damage", amount: 9, times: 2 },
+      { kind: "channelOrb", orb: "glass" },
+      { kind: "channelOrb", orb: "glass" },
     ],
     upgrade: {
       effects: [
-        { kind: "channelOrb", orb: "lightning" },
-        { kind: "channelOrb", orb: "lightning" },
-        { kind: "channelOrb", orb: "lightning" },
-        { kind: "channelOrb", orb: "lightning" },
+        { kind: "damage", amount: 12, times: 2 },
+        { kind: "channelOrb", orb: "glass" },
+        { kind: "channelOrb", orb: "glass" },
       ],
     },
+  },
+  {
+    id: "shatter",
+    name: "Shatter",
+    character: "defect",
+    type: "attack",
+    rarity: "rare",
+    cost: 1,
+    target: "all_enemies",
+    effects: [
+      { kind: "damage", amount: 11 },
+      { kind: "evokeAllOrbs" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 15 },
+        { kind: "evokeAllOrbs" },
+      ],
+    },
+  },
+  {
+    id: "supercritical",
+    name: "Supercritical",
+    character: "defect",
+    type: "skill",
+    rarity: "rare",
+    cost: 0,
+    target: "self",
+    exhaust: true,
+    effects: [{ kind: "gainEnergy", amount: 4 }],
+    upgrade: { effects: [{ kind: "gainEnergy", amount: 6 }] },
+  },
+
+  // ---- Ancients ----
+  {
+    id: "biased_cognition",
+    name: "Biased Cognition",
+    character: "defect",
+    type: "power",
+    rarity: "rare",
+    cost: 1,
+    target: "self",
+    // StS2 also loses 1 Focus at the start of each turn; that downside isn't modeled yet.
+    effects: [{ kind: "applyPower", power: "focus", amount: 4, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "focus", amount: 5, to: "self" }] },
+  },
+  {
+    id: "quadcast",
+    name: "Quadcast",
+    character: "defect",
+    type: "skill",
+    rarity: "rare",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "evokeOrb", times: 4 }],
+    upgrade: { effects: [{ kind: "evokeOrb", times: 4 }] },
   },
 ];

@@ -1314,7 +1314,8 @@ export class GameEngine {
         this.drawCards(source, eff.amount);
         break;
       case "gainEnergy":
-        source.energy += eff.amount;
+        if (eff.doubleCurrent) source.energy *= 2;
+        else source.energy += eff.amount;
         break;
       case "heal":
         this.heal(source, eff.amount);
@@ -1409,9 +1410,11 @@ export class GameEngine {
         this.evokeRightmostOrb(source, eff.times ?? 1);
         break;
       case "evokeAllOrbs": {
-        // Evoke every orb (without removing them), e.g. a Tempest-style finisher.
+        // Evoke every orb, then remove them all (e.g. Shatter).
         const times = eff.times ?? 1;
-        for (const orb of source.orbs) for (let i = 0; i < times; i++) this.evokeOrbEffect(source, orb);
+        const all = source.orbs;
+        source.orbs = [];
+        for (const orb of all) for (let i = 0; i < times; i++) this.evokeOrbEffect(source, orb);
         break;
       }
       case "gainOrbSlots":
@@ -1864,18 +1867,32 @@ export class GameEngine {
   // ----------------------------------------------------------------- Defect orbs
 
   private orbName(t: OrbType): string {
-    return t === "lightning" ? "Lightning" : t === "frost" ? "Frost" : t === "dark" ? "Dark" : "Plasma";
+    return t === "lightning"
+      ? "Lightning"
+      : t === "frost"
+        ? "Frost"
+        : t === "dark"
+          ? "Dark"
+          : t === "glass"
+            ? "Glass"
+            : "Plasma";
   }
 
-  // Channel a new orb. If the slots are full, the oldest orb is Evoked and removed
-  // to make room (matching the Defect's orb overflow).
+  // A freshly channeled orb's starting stored value. Dark charges up from 0; Glass
+  // starts at 4 and decays; the rest don't use a stored value.
+  private initialOrbAmount(type: OrbType): number {
+    return type === "glass" ? 4 : 0;
+  }
+
+  // Channel a new orb. If the slots are full, the rightmost (most recently
+  // channeled) orb is Evoked to make room (StS2 orb overflow).
   private channelOrb(p: InternalPlayer, type: OrbType): void {
     p.usesOrbs = true;
     if (p.orbs.length >= p.orbSlots && p.orbs.length > 0) {
-      const evicted = p.orbs.shift()!;
+      const evicted = p.orbs.pop()!;
       this.evokeOrbEffect(p, evicted);
     }
-    p.orbs.push({ type, amount: 0 });
+    p.orbs.push({ type, amount: this.initialOrbAmount(type) });
     this.pushLog(`✦ ${p.name} channels ${this.orbName(type)}.`);
   }
 
@@ -1887,7 +1904,7 @@ export class GameEngine {
     for (let i = 0; i < times; i++) this.evokeOrbEffect(p, orb);
   }
 
-  // The Evoke (burst) effect of an orb. Lightning/Frost/Dark scale with Focus.
+  // The Evoke (burst) effect of an orb. Lightning/Frost/Dark/Glass scale with Focus.
   private evokeOrbEffect(p: InternalPlayer, orb: { type: OrbType; amount: number }): void {
     const focus = p.powers.get("focus") ?? 0;
     switch (orb.type) {
@@ -1898,11 +1915,16 @@ export class GameEngine {
         this.gainBlock(p, Math.max(0, 5 + focus), "Frost orb");
         break;
       case "dark":
-        if (orb.amount > 0) this.orbDamageRandomEnemy(p, orb.amount, "Dark");
+        // Dark bursts its stored value at the lowest-HP enemy.
+        if (orb.amount > 0) this.orbDamageLowestHpEnemy(p, orb.amount, "Dark");
         break;
       case "plasma":
         p.energy += 2;
         this.pushLog(`✦ ${p.name} evokes Plasma (+2 Energy).`);
+        break;
+      case "glass":
+        // Glass bursts for double its current value (+Focus) to ALL enemies.
+        this.orbDamageAllEnemies(p, Math.max(0, (orb.amount + focus) * 2), "Glass");
         break;
     }
   }
@@ -1912,7 +1934,13 @@ export class GameEngine {
   private tickOrbDamage(p: InternalPlayer): void {
     const focus = p.powers.get("focus") ?? 0;
     for (const orb of p.orbs) {
-      if (orb.type === "lightning") this.orbDamageRandomEnemy(p, Math.max(0, 3 + focus), "Lightning");
+      if (orb.type === "lightning") {
+        this.orbDamageRandomEnemy(p, Math.max(0, 3 + focus), "Lightning");
+      } else if (orb.type === "glass") {
+        // Deal its current value (+Focus) to ALL enemies, then it decays by 1.
+        this.orbDamageAllEnemies(p, Math.max(0, orb.amount + focus), "Glass");
+        orb.amount = Math.max(0, orb.amount - 1);
+      }
     }
   }
 
@@ -1932,7 +1960,8 @@ export class GameEngine {
           p.nextTurnEnergy += 1;
           break;
         case "lightning":
-          break; // handled in tickOrbDamage (before Block is cleared)
+        case "glass":
+          break; // damage orbs handled in tickOrbDamage (before Block is cleared)
       }
     }
   }
@@ -1943,6 +1972,30 @@ export class GameEngine {
     if (enemies.length === 0) return;
     const targetId = enemies[Math.floor(this.rng() * enemies.length)];
     const tgt = this.players.get(targetId)!;
+    const dealt = this.computeDamage(amount, p, tgt, false);
+    this.dealDamage(tgt, dealt);
+    this.pushLog(`✦ ${p.name}'s ${label} orb hits ${tgt.name} for ${dealt}.`);
+    this.checkDeaths();
+  }
+
+  private orbDamageAllEnemies(p: InternalPlayer, amount: number, label: string): void {
+    if (amount <= 0) return;
+    for (const id of this.aliveEnemies(p.id)) {
+      const tgt = this.players.get(id);
+      if (!tgt) continue;
+      this.dealDamage(tgt, this.computeDamage(amount, p, tgt, false));
+    }
+    this.pushLog(`✦ ${p.name}'s ${label} orb hits all enemies for ${amount}.`);
+    this.checkDeaths();
+  }
+
+  private orbDamageLowestHpEnemy(p: InternalPlayer, amount: number, label: string): void {
+    if (amount <= 0) return;
+    const enemies = this.aliveEnemies(p.id)
+      .map((id) => this.players.get(id)!)
+      .sort((a, b) => a.hp - b.hp);
+    const tgt = enemies[0];
+    if (!tgt) return;
     const dealt = this.computeDamage(amount, p, tgt, false);
     this.dealDamage(tgt, dealt);
     this.pushLog(`✦ ${p.name}'s ${label} orb hits ${tgt.name} for ${dealt}.`);
@@ -2480,7 +2533,7 @@ export function describeCard(def: CardDef): string {
         parts.push(`Draw ${e.amount}`);
         break;
       case "gainEnergy":
-        parts.push(`Gain ${e.amount} energy`);
+        parts.push(e.doubleCurrent ? "Double your energy" : `Gain ${e.amount} energy`);
         break;
       case "heal":
         parts.push(`Heal ${e.amount}`);
@@ -2618,8 +2671,14 @@ export function describeCard(def: CardDef): string {
       }
       case "channelOrb": {
         const n = e.amount ?? 1;
-        const name = e.orb === "lightning" ? "Lightning" : e.orb === "frost" ? "Frost" : e.orb === "dark" ? "Dark" : "Plasma";
-        parts.push(`Channel ${n} ${name}`);
+        const names: Record<string, string> = {
+          lightning: "Lightning",
+          frost: "Frost",
+          dark: "Dark",
+          plasma: "Plasma",
+          glass: "Glass",
+        };
+        parts.push(`Channel ${n} ${names[e.orb] ?? e.orb}`);
         break;
       }
       case "evokeOrb":
