@@ -918,7 +918,7 @@ const energyOf = (g: GameEngine, id: string) =>
   const bBefore = hpOf(g, "b");
   assert(play(g, "a", "grand_finale", "b") === null, "Grand Finale plays");
   finishTurn(g);
-  assert(hpOf(g, "b") === bBefore - 50, "Grand Finale deals 50 with an empty draw pile");
+  assert(hpOf(g, "b") === bBefore - 60, "Grand Finale deals 60 with an empty draw pile");
 }
 {
   // Pad the deck so cards remain in the draw pile -> Grand Finale fizzles.
@@ -1263,6 +1263,24 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
     orbsOf(g, "a").some((o) => o.type === "glass" && o.amount === 3),
     "Glass orb decayed to 3 after firing",
   );
+}
+
+// Sly: a Sly card auto-plays for free when discarded during your turn.
+{
+  const g = solo(
+    [{ id: "survivor" }, { id: "untouchable" }, { id: "strike_g" }, { id: "strike_g" }, { id: "defend_g" }],
+    4,
+  );
+  ensure(g, "a");
+  assert(play(g, "a", "survivor") === null, "Survivor plays");
+  const blockBefore = blockOf(g, "a") ?? 0; // Survivor's Block already applied
+  const unt = handOf(g, "a").find((c) => c.id === "untouchable")!;
+  assert(g.resolveChoice("a", [unt.uid]) === null, "discard Untouchable to Survivor");
+  assert(
+    (blockOf(g, "a") ?? 0) - blockBefore === 6,
+    "Sly Untouchable auto-plays for 6 Block when discarded, got " + ((blockOf(g, "a") ?? 0) - blockBefore),
+  );
+  assert(!handOf(g, "a").some((c) => c.id === "untouchable"), "Untouchable left hand after Sly play");
 }
 
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

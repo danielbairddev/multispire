@@ -167,6 +167,10 @@ const CARD_ALIASES: Record<string, string> = {
   glassknife: "glass_knife",
   wraithform: "wraith_form",
   corpseexplosion: "corpse_explosion",
+  flickflack: "flick_flack",
+  leadingstrike: "leading_strike",
+  piercingwail: "piercing_wail",
+  bubblebubble: "bubble_bubble",
   // ---- Defect ----
   striked: "strike_d",
   defendd: "defend_d",

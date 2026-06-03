@@ -1107,7 +1107,7 @@ export class GameEngine {
       return;
     }
     if (kind === "discardChosen") {
-      for (const c of chosen) source.discard.push(c);
+      for (const c of chosen) this.discardCard(source, c); // Sly cards auto-play
       source.discardsThisTurn += chosen.length;
       const names = chosen.map((c) => resolveCard(c.id, c.upgraded)?.name ?? c.id).join(", ");
       this.pushLog(`✦ ${source.name} discards ${names}.`);
@@ -1347,10 +1347,10 @@ export class GameEngine {
         for (let i = 0; i < eff.amount && source.hand.length > 0; i++) {
           const idx = Math.floor(this.rng() * source.hand.length);
           const [c] = source.hand.splice(idx, 1);
-          source.discard.push(c);
           source.discardsThisTurn++;
           const cdef = resolveCard(c.id, c.upgraded);
           this.pushLog(`✦ ${source.name} discards ${cdef?.name ?? c.id}.`);
+          this.discardCard(source, c); // Sly cards auto-play instead
         }
         break;
       }
@@ -1358,10 +1358,11 @@ export class GameEngine {
         // Calculated Gamble: discard your whole hand, then draw that many cards.
         const n = source.hand.length;
         if (n > 0) {
-          source.discard.push(...source.hand);
+          const hand = source.hand;
           source.hand = [];
           source.discardsThisTurn += n;
           this.pushLog(`✦ ${source.name} discards their hand (${n}).`);
+          for (const c of hand) this.discardCard(source, c); // Sly cards auto-play
           this.drawCards(source, n);
         }
         break;
@@ -1376,7 +1377,7 @@ export class GameEngine {
           else keep.push(c);
         }
         source.hand = keep;
-        for (const c of dumped) source.discard.push(c);
+        for (const c of dumped) this.discardCard(source, c); // Sly cards auto-play
         source.discardsThisTurn += dumped.length;
         if (dumped.length > 0) {
           const names = dumped.map((c) => resolveCard(c.id, c.upgraded)?.name ?? c.id).join(", ");
@@ -2000,6 +2001,32 @@ export class GameEngine {
     this.dealDamage(tgt, dealt);
     this.pushLog(`✦ ${p.name}'s ${label} orb hits ${tgt.name} for ${dealt}.`);
     this.checkDeaths();
+  }
+
+  // Discard a card from hand as the result of a discard EFFECT this turn. Sly
+  // cards (StS2) immediately play themselves for free instead of being discarded.
+  private discardCard(p: InternalPlayer, c: CardInstance): void {
+    const def = resolveCard(c.id, c.upgraded);
+    if (def?.sly && this.phase === "action") this.slyAutoPlay(p, c, def);
+    else p.discard.push(c);
+  }
+
+  // Auto-play a Sly card for free (no energy), then send it to discard/exhaust.
+  private slyAutoPlay(p: InternalPlayer, c: CardInstance, def: CardDef): void {
+    let targets: string[] = [];
+    if (def.target === "enemy") {
+      const e = this.aliveEnemies(p.id);
+      targets = e.length ? [e[Math.floor(this.rng() * e.length)]] : [];
+    } else if (def.target === "all_enemies") {
+      targets = this.aliveEnemies(p.id);
+    } else if (def.target === "self") {
+      targets = [p.id];
+    }
+    this.pushLog(`✦ ${p.name}'s ${def.name} plays itself (Sly).`);
+    for (const e of def.effects) this.applyEffect(e, p, targets, def, c.uid);
+    p.cardsPlayedThisTurn += 1;
+    if (def.exhaust) this.exhaustCard(p, c);
+    else p.discard.push(c);
   }
 
   // Whenever you create a card: track the count and fire create-reactive powers
@@ -2713,6 +2740,7 @@ export function describeCard(def: CardDef): string {
   else if (def.starCost) text += ` Costs ${def.starCost} Star Energy.`;
   if (def.retain) text += " Retain.";
   if (def.innate) text += " Innate.";
+  if (def.sly) text += " Sly (if discarded this turn, it plays itself).";
   if (def.playFromDrawIfTop) text += " At end of turn, if on top of your draw pile, play it.";
   if (def.energyLossOnDraw) text += ` Lose ${def.energyLossOnDraw} Energy when drawn.`;
   return text;

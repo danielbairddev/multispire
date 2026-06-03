@@ -184,6 +184,9 @@ export interface CardDef {
   retain?: boolean;
   /** Innate: guaranteed to start in your opening hand at the beginning of combat. */
   innate?: boolean;
+  /** Sly (Silent, StS2): if discarded during your turn, it immediately plays
+   *  itself for free instead of going to the discard pile. */
+  sly?: boolean;
   /** After being played, shuffle back into the draw pile instead of discarding
    *  (the Sovereign Blade cycles through the deck after each use). */
   reshuffleOnPlay?: boolean;
