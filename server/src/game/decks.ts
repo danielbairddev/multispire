@@ -120,6 +120,37 @@ export function defectDemoDeck(): DeckList {
   ];
 }
 
+// The Necrobinder's starter: Strikes/Defends plus Bodyguard (summon Osty) and
+// Unleash (Osty strikes), the core of the summon game.
+export function necrobinderStarterDeck(): DeckList {
+  return [
+    ...Array.from({ length: 4 }, () => ({ id: "strike_n" })),
+    ...Array.from({ length: 4 }, () => ({ id: "defend_n" })),
+    { id: "bodyguard" },
+    { id: "unleash" },
+  ];
+}
+
+// A rounded ~18-card Necrobinder demo build: an Osty summon line, a Doom package,
+// some Ethereal burst, and a sacrifice payoff.
+export function necrobinderDemoDeck(): DeckList {
+  return [
+    ...Array.from({ length: 4 }, () => ({ id: "strike_n" })),
+    ...Array.from({ length: 3 }, () => ({ id: "defend_n" })),
+    { id: "bodyguard" },
+    { id: "unleash" },
+    { id: "poke" },
+    { id: "blight_strike" },
+    { id: "scourge" },
+    { id: "deathbringer" },
+    { id: "defile" },
+    { id: "putrefy" },
+    { id: "sacrifice" },
+    { id: "reanimate" },
+    { id: "end_of_days" },
+  ];
+}
+
 // The default deck everyone gets if they press Play without importing a loadout.
 // A rounded ~20-card Ironclad build: reliable damage, enough block to survive a
 // few turns, a couple of debuff/scaling options, and one power so games have an

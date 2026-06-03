@@ -1,0 +1,296 @@
+import type { CardDef } from "@multispire/shared";
+
+// Necrobinder card definitions (Slay the Spire 2). Pure functional game data.
+// Signature systems: Osty (a summon with its own Max HP that strikes for you and
+// can be sacrificed), Doom (at end of turn, if a target's Doom >= its HP it dies),
+// and heavy Ethereal use. This is a first pass; Soul cards and the Osty-attack /
+// doom-scaling riders are still to come (see docs/STS2_AUDIT.md, task #43).
+
+export const NECROBINDER_CARDS: CardDef[] = [
+  // ---- Starter ----
+  {
+    id: "strike_n",
+    name: "Strike",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "basic",
+    cost: 1,
+    target: "enemy",
+    effects: [{ kind: "damage", amount: 6 }],
+    upgrade: { effects: [{ kind: "damage", amount: 9 }] },
+  },
+  {
+    id: "defend_n",
+    name: "Defend",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "basic",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "block", amount: 5 }],
+    upgrade: { effects: [{ kind: "block", amount: 8 }] },
+  },
+  {
+    id: "bodyguard",
+    name: "Bodyguard",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "basic",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "summon", amount: 5 }],
+    upgrade: { effects: [{ kind: "summon", amount: 7 }] },
+  },
+  {
+    id: "unleash",
+    name: "Unleash",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "basic",
+    cost: 1,
+    target: "enemy",
+    effects: [{ kind: "ostyDamage", amount: 6 }],
+    upgrade: { effects: [{ kind: "ostyDamage", amount: 9 }] },
+  },
+
+  // ---- Commons ----
+  {
+    id: "poke",
+    name: "Poke",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "common",
+    cost: 0,
+    target: "enemy",
+    effects: [{ kind: "ostyDamage", amount: 6 }],
+    upgrade: { effects: [{ kind: "ostyDamage", amount: 9 }] },
+  },
+  {
+    id: "blight_strike",
+    name: "Blight Strike",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    // Deal damage and apply Doom equal to the damage.
+    effects: [
+      { kind: "damage", amount: 8 },
+      { kind: "applyPower", power: "doom", amount: 8, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 10 },
+        { kind: "applyPower", power: "doom", amount: 10, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "scourge",
+    name: "Scourge",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "applyPower", power: "doom", amount: 13, to: "enemy" },
+      { kind: "draw", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "applyPower", power: "doom", amount: 16, to: "enemy" },
+        { kind: "draw", amount: 2 },
+      ],
+    },
+  },
+  {
+    id: "negative_pulse",
+    name: "Negative Pulse",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "all_enemies",
+    effects: [
+      { kind: "block", amount: 5 },
+      { kind: "applyPower", power: "doom", amount: 7, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 6 },
+        { kind: "applyPower", power: "doom", amount: 11, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "grave_warden",
+    name: "Grave Warden",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "self",
+    // StS2 also adds a Soul; Soul cards are a later pass.
+    effects: [{ kind: "block", amount: 8 }],
+    upgrade: { effects: [{ kind: "block", amount: 11 }] },
+  },
+  {
+    id: "defile",
+    name: "Defile",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    ethereal: true,
+    effects: [{ kind: "damage", amount: 13 }],
+    upgrade: { effects: [{ kind: "damage", amount: 17 }] },
+  },
+  {
+    id: "fear",
+    name: "Fear",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    ethereal: true,
+    effects: [
+      { kind: "damage", amount: 7 },
+      { kind: "applyPower", power: "vulnerable", amount: 1, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 8 },
+        { kind: "applyPower", power: "vulnerable", amount: 2, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "reap",
+    name: "Reap",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "common",
+    cost: 3,
+    target: "enemy",
+    retain: true,
+    effects: [{ kind: "damage", amount: 27 }],
+    upgrade: { effects: [{ kind: "damage", amount: 33 }] },
+  },
+  {
+    id: "sow",
+    name: "Sow",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "all_enemies",
+    retain: true,
+    effects: [{ kind: "damage", amount: 8 }],
+    upgrade: { effects: [{ kind: "damage", amount: 11 }] },
+  },
+
+  // ---- Uncommons ----
+  {
+    id: "deathbringer",
+    name: "Deathbringer",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 2,
+    target: "all_enemies",
+    effects: [
+      { kind: "applyPower", power: "doom", amount: 21, to: "enemy" },
+      { kind: "applyPower", power: "weak", amount: 2, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "applyPower", power: "doom", amount: 26, to: "enemy" },
+        { kind: "applyPower", power: "weak", amount: 2, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "no_escape",
+    name: "No Escape",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    // StS2 adds +5 Doom per 10 existing Doom; that rider is a later pass.
+    effects: [{ kind: "applyPower", power: "doom", amount: 10, to: "enemy" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "doom", amount: 15, to: "enemy" }] },
+  },
+  {
+    id: "putrefy",
+    name: "Putrefy",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    exhaust: true,
+    effects: [
+      { kind: "applyPower", power: "weak", amount: 2, to: "enemy" },
+      { kind: "applyPower", power: "vulnerable", amount: 2, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "applyPower", power: "weak", amount: 3, to: "enemy" },
+        { kind: "applyPower", power: "vulnerable", amount: 3, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "bury",
+    name: "Bury",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 4,
+    target: "enemy",
+    effects: [{ kind: "damage", amount: 52 }],
+    upgrade: { effects: [{ kind: "damage", amount: 63 }] },
+  },
+
+  // ---- Rares ----
+  {
+    id: "sacrifice",
+    name: "Sacrifice",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "rare",
+    cost: 1,
+    target: "self",
+    retain: true,
+    effects: [{ kind: "sacrificeOsty", blockPerMaxHp: 2 }],
+    upgrade: { effects: [{ kind: "sacrificeOsty", blockPerMaxHp: 2 }] },
+  },
+  {
+    id: "reanimate",
+    name: "Reanimate",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "rare",
+    cost: 3,
+    target: "self",
+    exhaust: true,
+    effects: [{ kind: "summon", amount: 20 }],
+    upgrade: { effects: [{ kind: "summon", amount: 25 }] },
+  },
+  {
+    id: "end_of_days",
+    name: "End of Days",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "rare",
+    cost: 3,
+    target: "all_enemies",
+    // Doom's own end-of-turn rule handles the kill if Doom >= HP.
+    effects: [{ kind: "applyPower", power: "doom", amount: 29, to: "enemy" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "doom", amount: 37, to: "enemy" }] },
+  },
+];

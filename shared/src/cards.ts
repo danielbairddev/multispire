@@ -5,7 +5,7 @@ export type CardType = "attack" | "skill" | "power" | "status" | "curse";
 
 export type Rarity = "basic" | "common" | "uncommon" | "rare" | "special";
 
-export type Character = "ironclad" | "silent" | "defect" | "watcher" | "regent" | "neutral";
+export type Character = "ironclad" | "silent" | "defect" | "watcher" | "regent" | "necrobinder" | "neutral";
 
 /** Defect orb kinds. */
 export type OrbType = "lightning" | "frost" | "dark" | "plasma" | "glass";
@@ -122,6 +122,13 @@ export type Effect =
   | { kind: "evokeAllOrbs"; times?: number }
   // Increase your maximum orb slots by `amount` (e.g. Capacitor).
   | { kind: "gainOrbSlots"; amount: number }
+  // --- Necrobinder: Osty (a summon) & Doom ---
+  // Summon Osty with `amount` Max HP, or raise his Max HP by `amount` if he exists.
+  | { kind: "summon"; amount: number }
+  // Osty strikes for `amount` (+ `perOstyMaxHp` × Osty's Max HP, e.g. Unleash).
+  | { kind: "ostyDamage"; amount: number; perOstyMaxHp?: number }
+  // Osty dies; gain Block equal to `blockPerMaxHp` × Osty's Max HP (e.g. Sacrifice).
+  | { kind: "sacrificeOsty"; blockPerMaxHp: number }
   // Add copies of `cardId` to hand until the hand is full (e.g. Crash Landing's
   // "Fill your hand with Debris").
   | { kind: "fillHandWith"; cardId: string }
@@ -338,6 +345,8 @@ export type PowerId =
   | "focus"
   // Ironclad Plating (StS2): gain this much Block each turn; decreases by 1 each turn.
   | "plating"
+  // Necrobinder Doom: at end of turn, if Doom >= the target's HP, it dies (ignores Block).
+  | "doom"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

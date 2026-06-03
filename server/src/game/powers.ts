@@ -109,6 +109,8 @@ export const POWERS: Record<string, PowerDef> = {
   focus: { id: "focus", name: "Focus", kind: "buff" },
   // Plating (StS2 Ironclad): gain this much Block each turn; decreases by 1 each turn.
   plating: { id: "plating", name: "Plating", kind: "buff" },
+  // Doom (Necrobinder): at end of turn, if Doom >= the target's HP, it dies.
+  doom: { id: "doom", name: "Doom", kind: "debuff" },
 };
 
 export function getPower(id: PowerId): PowerDef {

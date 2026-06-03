@@ -982,6 +982,7 @@ const HERO_LABELS: Record<string, string> = {
   silent: "Silent",
   regent: "Regent",
   defect: "Defect",
+  necrobinder: "Necrobinder",
   watcher: "Watcher",
 };
 
@@ -989,7 +990,7 @@ const HERO_LABELS: Record<string, string> = {
 // present in the catalog (plus an "Any hero" unset option).
 function heroOptions(selected: string): string {
   const present = new Set<string>((ui.catalog ?? []).map((c) => c.character).filter((ch) => ch !== "neutral"));
-  const order = ["ironclad", "silent", "regent", "defect", "watcher"];
+  const order = ["ironclad", "silent", "regent", "defect", "necrobinder", "watcher"];
   const heroes = order.filter((h) => present.has(h));
   // Keep a previously-saved hero selectable even if its cards aren't in the
   // catalog yet, so the dropdown reflects the real state instead of silently
@@ -1496,6 +1497,9 @@ function avatar(g: GameView, p: PlayerView, isYou: boolean): HTMLElement {
   // Defect orbs (public). Coloured chips, oldest on the left; Dark shows its charge.
   const orbs = p.usesOrbs ? `<div class="avorbs">🔮 ${p.orbs.length}/${p.orbSlots}${orbChips(p)}</div>` : "";
 
+  // Necrobinder's Osty summon (public): show its current/max HP when alive.
+  const osty = p.osty ? `<div class="avosty">💀 Osty ${p.osty.hp}/${p.osty.maxHp}</div>` : "";
+
   const node = el(`
     <div class="avatarbox ${isYou ? "you" : "foe"} ${p.alive ? "" : "dead"}" ${isYou ? "" : `data-enemy="${p.id}"`}>
       ${blockBadge}
@@ -1512,6 +1516,7 @@ function avatar(g: GameView, p: PlayerView, isYou: boolean): HTMLElement {
       ${energy}
       ${stars}
       ${orbs}
+      ${osty}
       <div class="powers">${powerBadges(p)}</div>
     </div>`);
   node.querySelector(".buildbtn")!.addEventListener("click", (ev) => {

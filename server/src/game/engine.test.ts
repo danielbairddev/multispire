@@ -1294,4 +1294,38 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert(powerOf(g, "a", "plating") === 3, "Plating decayed to 3, got " + powerOf(g, "a", "plating"));
 }
 
+// --- Necrobinder: Doom kills at end of turn if Doom >= HP (ignoring Block) ---
+{
+  const g = new GameEngine("doom", seededRng(3));
+  g.addPlayer({ id: "a", name: "A", deck: [{ id: "blight_strike" }, { id: "scourge" }, { id: "strike_n" }], maxHp: 200 });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 12 });
+  g.start();
+  if (g.priorityId !== "a") g.pass(g.priorityId!);
+  // Stack Doom on B above its 12 HP via Scourge (13) — B should die at end of turn.
+  play(g, "a", "scourge", "b");
+  assert(powerOf(g, "b", "doom") === 13, "Scourge applies 13 Doom");
+  const bAlive = () => g.viewFor("a").players.find((p) => p.id === "b")!.alive;
+  finishTurn(g);
+  assert(!bAlive(), "B dies to Doom (13 >= 12 HP) at end of turn");
+}
+
+// --- Necrobinder: Summon gives Osty HP; Osty strikes; Sacrifice converts it ---
+{
+  const g = new GameEngine("osty", seededRng(4));
+  g.addPlayer({ id: "a", name: "A", deck: [{ id: "bodyguard" }, { id: "poke" }, { id: "sacrifice" }, { id: "strike_n" }, { id: "defend_n" }], maxHp: 200 });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  const ostyOf = (id: string) => g.viewFor("a").players.find((p) => p.id === id)!.osty;
+  assert(play(g, "a", "bodyguard") === null, "Bodyguard summons Osty");
+  assert(ostyOf("a")?.maxHp === 5, "Osty summoned with 5 Max HP");
+  const before = hpOf(g, "b");
+  play(g, "a", "poke", "b"); // Osty deals 6 (queued)
+  play(g, "a", "sacrifice"); // Osty dies, gain Block = 2 x 5 = 10
+  assert((blockOf(g, "a") ?? 0) === 10, "Sacrifice gives Block = 2x Osty Max HP (10), got " + blockOf(g, "a"));
+  assert(ostyOf("a") === null, "Osty is gone after Sacrifice");
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 6, "Osty's Poke dealt 6, got " + (before - hpOf(g, "b")));
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

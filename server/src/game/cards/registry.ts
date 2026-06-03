@@ -2,6 +2,7 @@ import type { CardDef } from "@multispire/shared";
 import { reportMissing } from "../missing.js";
 import { DEFECT_CARDS } from "./defect.js";
 import { IRONCLAD_CARDS } from "./ironclad.js";
+import { NECROBINDER_CARDS } from "./necrobinder.js";
 import { NEUTRAL_CARDS } from "./neutral.js";
 import { REGENT_CARDS } from "./regent.js";
 import { SILENT_CARDS } from "./silent.js";
@@ -13,6 +14,7 @@ const ALL: CardDef[] = [
   ...REGENT_CARDS,
   ...SILENT_CARDS,
   ...DEFECT_CARDS,
+  ...NECROBINDER_CARDS,
 ];
 
 /**
@@ -193,6 +195,14 @@ const CARD_ALIASES: Record<string, string> = {
   doubleenergy: "double_energy",
   icelance: "ice_lance",
   boostaway: "boost_away",
+  // ---- Necrobinder ----
+  striken: "strike_n",
+  defendn: "defend_n",
+  blightstrike: "blight_strike",
+  negativepulse: "negative_pulse",
+  gravewarden: "grave_warden",
+  noescape: "no_escape",
+  endofdays: "end_of_days",
 };
 
 /**

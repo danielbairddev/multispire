@@ -168,6 +168,8 @@ export interface PlayerView {
   orbSlots: number;
   /** Whether this player uses Defect orbs (HUD gating). */
   usesOrbs: boolean;
+  /** Necrobinder's Osty summon: current/max HP. Null if this player has no Osty. */
+  osty: { hp: number; maxHp: number } | null;
   powers: PowerView[];
   handCount: number;
   drawCount: number;

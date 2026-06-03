@@ -141,6 +141,12 @@ interface InternalPlayer {
   orbSlots: number;
   // True for Defect players (deck contains Defect cards): surface the orb HUD.
   usesOrbs: boolean;
+  // --- Necrobinder ---
+  // Osty (a summon). ostyMaxHp 0 means no Osty is currently summoned.
+  ostyHp: number;
+  ostyMaxHp: number;
+  // True for Necrobinder players (deck contains Necrobinder cards): surface Osty.
+  usesOsty: boolean;
   seedDeck: DeckList; // the build they brought, for the build viewer
 }
 
@@ -274,6 +280,9 @@ export class GameEngine {
       orbs: [],
       orbSlots: 3,
       usesOrbs: seed.deck.some((spec) => resolveCard(spec.id, false)?.character === "defect"),
+      ostyHp: 0,
+      ostyMaxHp: 0,
+      usesOsty: seed.deck.some((spec) => resolveCard(spec.id, false)?.character === "necrobinder"),
       seedDeck: seed.deck,
     };
     // Apply relic starting effects (self-targeted ones; enemy-targeted ones like
@@ -845,8 +854,15 @@ export class GameEngine {
       // Monologue / Reflect last only for the turn they're played.
       p.powers.delete("monologue");
       p.powers.delete("reflect");
+      // Doom: at end of turn, if Doom >= HP, the character dies (ignores Block).
+      const doom = p.powers.get("doom") ?? 0;
+      if (doom > 0 && doom >= p.hp) {
+        p.hp = 0;
+        this.pushLog(`☠ ${p.name} succumbs to Doom (${doom}).`);
+      }
       this.decayPowers(p);
     }
+    this.checkDeaths();
     // Frost/Dark/Plasma orb passives fire here (after Block is cleared so Frost
     // Block carries into the next turn's incoming attacks).
     for (const p of this.players.values()) {
@@ -1431,6 +1447,46 @@ export class GameEngine {
         source.orbSlots += eff.amount;
         this.pushLog(`✦ ${source.name} gains ${eff.amount} Orb slot${eff.amount > 1 ? "s" : ""}.`);
         break;
+      case "summon": {
+        source.usesOsty = true;
+        if (source.ostyMaxHp <= 0) {
+          source.ostyMaxHp = eff.amount;
+          source.ostyHp = eff.amount;
+          this.pushLog(`✦ ${source.name} summons Osty (${eff.amount} HP).`);
+        } else {
+          source.ostyMaxHp += eff.amount;
+          source.ostyHp += eff.amount;
+          this.pushLog(`✦ ${source.name}'s Osty grows by ${eff.amount} HP (now ${source.ostyHp}/${source.ostyMaxHp}).`);
+        }
+        break;
+      }
+      case "ostyDamage": {
+        // Osty strikes for a flat amount plus a fraction of his Max HP.
+        const dmg = eff.amount + Math.floor((eff.perOstyMaxHp ?? 0) * source.ostyMaxHp);
+        for (const tid of targets) {
+          const tgt = this.players.get(tid);
+          if (!tgt) continue;
+          this.pending.push({
+            uid: uid("atk"),
+            sourceId: source.id,
+            targetId: tid,
+            cardName: `${def.name} (Osty)`,
+            perHit: this.computeDamage(dmg, source, tgt, false),
+            times: 1,
+          });
+        }
+        break;
+      }
+      case "sacrificeOsty": {
+        if (source.ostyMaxHp > 0) {
+          const block = Math.floor(eff.blockPerMaxHp * source.ostyMaxHp);
+          this.gainBlock(source, block, def.name);
+          this.pushLog(`✦ ${source.name} sacrifices Osty for ${block} Block.`);
+          source.ostyHp = 0;
+          source.ostyMaxHp = 0;
+        }
+        break;
+      }
       case "forge": {
         const otherAttacks = Math.max(0, source.attacksThisTurn - 1);
         const amount = eff.amount + (eff.perOtherAttackThisTurn ?? 0) * otherAttacks;
@@ -2427,6 +2483,7 @@ export class GameEngine {
       orbs: p.orbs.map((o) => ({ type: o.type, amount: o.amount })),
       orbSlots: p.usesOrbs ? p.orbSlots : 0,
       usesOrbs: p.usesOrbs,
+      osty: p.usesOsty && p.ostyMaxHp > 0 ? { hp: p.ostyHp, maxHp: p.ostyMaxHp } : null,
       powers,
       handCount: p.hand.length,
       drawCount: p.draw.length,
@@ -2724,6 +2781,19 @@ export function describeCard(def: CardDef): string {
         break;
       case "gainOrbSlots":
         parts.push(`Gain ${e.amount} Orb slot${e.amount > 1 ? "s" : ""}`);
+        break;
+      case "summon":
+        parts.push(`Summon ${e.amount} (give Osty ${e.amount} Max HP)`);
+        break;
+      case "ostyDamage":
+        parts.push(
+          e.perOstyMaxHp
+            ? `Osty deals ${e.amount} damage plus ${e.perOstyMaxHp}× his Max HP`
+            : `Osty deals ${e.amount} damage`,
+        );
+        break;
+      case "sacrificeOsty":
+        parts.push(`Osty dies; gain Block equal to ${e.blockPerMaxHp}× his Max HP`);
         break;
       case "unimplemented":
         parts.push("(unimplemented)");
