@@ -11,6 +11,19 @@ variant. This doc is the agreed scope before code changes.
   individually** as we reach them (reinterpret or skip per card).
 - Execution order: Defect → Silent → Ironclad → verify Regent → Necrobinder.
 
+## Progress
+
+- **Defect — pass 1 done** ✅ Glass orb implemented; StS2 orb rules (evoke
+  rightmost, Dark→lowest-HP, Shatter consumes); 14 StS2 cards added, 5 StS1-only
+  removed. Pass 2: ~40 more StS2 cards (task #39).
+- **Silent — pass 1 done** ✅ Sly keyword implemented; 12 StS2 cards added.
+  Pass 2: remove 18 StS1-only cards (+fix 6 tests) and add ~45 more (task #40).
+- **Ironclad — pass 1 done** ✅ Plating power implemented; 11 StS2 cards added.
+  Pass 2: remove StS1-only cards (+fix tests) and add the rest (task #41).
+- **Regent — verified** ✅ Fully StS2-aligned; Neutron Aegis now uses Plating.
+- **Necrobinder — not started.** Greenfield 5th character (~90 cards, new
+  Osty/Doom/Soul subsystems). 66 Max HP; starter relic Bound Phylactery (task #43).
+
 ## Roster (confirmed from the wiki)
 
 StS2 has **5 characters**: Ironclad, Silent, Defect, **Regent**, **Necrobinder**.
