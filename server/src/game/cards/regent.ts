@@ -148,7 +148,7 @@ export const REGENT_CARDS: CardDef[] = [
   },
   {
     id: "begone",
-    name: "BEGONE!!",
+    name: "BEGONE!",
     character: "regent",
     type: "skill",
     rarity: "common",
@@ -525,7 +525,7 @@ export const REGENT_CARDS: CardDef[] = [
   },
   {
     id: "charge",
-    name: "CHARGE!!!",
+    name: "CHARGE!!",
     character: "regent",
     type: "skill",
     rarity: "uncommon",
@@ -1270,8 +1270,8 @@ export const REGENT_CARDS: CardDef[] = [
     cost: 1,
     starCost: 5,
     target: "self",
-    effects: [{ kind: "applyPower", power: "plated_armor", amount: 8, to: "self" }],
-    upgrade: { effects: [{ kind: "applyPower", power: "plated_armor", amount: 11, to: "self" }] },
+    effects: [{ kind: "applyPower", power: "plating", amount: 8, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "plating", amount: 11, to: "self" }] },
   },
   {
     id: "royalties",
