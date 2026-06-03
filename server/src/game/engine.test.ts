@@ -1283,4 +1283,15 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert(!handOf(g, "a").some((c) => c.id === "untouchable"), "Untouchable left hand after Sly play");
 }
 
+// Plating: gain Block each turn equal to the stacks, which then decay by 1.
+{
+  const g = solo([{ id: "stone_armor" }, { id: "strike_r" }, { id: "strike_r" }, { id: "defend_r" }, { id: "bash" }]);
+  ensure(g, "a");
+  assert(play(g, "a", "stone_armor") === null, "Stone Armor plays");
+  assert(powerOf(g, "a", "plating") === 4, "Stone Armor grants 4 Plating");
+  finishTurn(g); // start of next turn: +4 Block, Plating decays to 3
+  assert((blockOf(g, "a") ?? 0) >= 4, "Plating granted 4 Block at the start of the turn");
+  assert(powerOf(g, "a", "plating") === 3, "Plating decayed to 3, got " + powerOf(g, "a", "plating"));
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

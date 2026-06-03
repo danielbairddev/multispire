@@ -107,6 +107,8 @@ export const POWERS: Record<string, PowerDef> = {
   void_form: { id: "void_form", name: "Void Form", kind: "buff" },
   // Focus: increases the value of Lightning, Frost, and Dark orbs.
   focus: { id: "focus", name: "Focus", kind: "buff" },
+  // Plating (StS2 Ironclad): gain this much Block each turn; decreases by 1 each turn.
+  plating: { id: "plating", name: "Plating", kind: "buff" },
 };
 
 export function getPower(id: PowerId): PowerDef {

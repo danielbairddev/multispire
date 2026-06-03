@@ -1037,4 +1037,204 @@ export const IRONCLAD_CARDS: CardDef[] = [
     exhaust: true,
     effects: [],
   },
+
+  // ---- StS2 additions (incl. Plating: gain Block each turn, decays by 1). See
+  //      docs/STS2_AUDIT.md for the remaining StS2 cards still to add. ----
+  {
+    id: "stone_armor",
+    name: "Stone Armor",
+    character: "ironclad",
+    type: "power",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "applyPower", power: "plating", amount: 4, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "plating", amount: 6, to: "self" }] },
+  },
+  {
+    id: "blood_wall",
+    name: "Blood Wall",
+    character: "ironclad",
+    type: "skill",
+    rarity: "common",
+    cost: 2,
+    target: "self",
+    effects: [
+      { kind: "loseHp", amount: 2 },
+      { kind: "block", amount: 16 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "loseHp", amount: 2 },
+        { kind: "block", amount: 20 },
+      ],
+    },
+  },
+  {
+    id: "breakthrough",
+    name: "Breakthrough",
+    character: "ironclad",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "all_enemies",
+    effects: [
+      { kind: "loseHp", amount: 1 },
+      { kind: "damage", amount: 9 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "loseHp", amount: 1 },
+        { kind: "damage", amount: 13 },
+      ],
+    },
+  },
+  {
+    id: "cinder",
+    name: "Cinder",
+    character: "ironclad",
+    type: "attack",
+    rarity: "common",
+    cost: 2,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 18 },
+      { kind: "exhaustRandom", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 24 },
+        { kind: "exhaustRandom", amount: 1 },
+      ],
+    },
+  },
+  {
+    id: "setup_strike",
+    name: "Setup Strike",
+    character: "ironclad",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 7 },
+      { kind: "applyPower", power: "strength", amount: 2, to: "self" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 9 },
+        { kind: "applyPower", power: "strength", amount: 3, to: "self" },
+      ],
+    },
+  },
+  {
+    id: "tremble",
+    name: "Tremble",
+    character: "ironclad",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    exhaust: true,
+    effects: [{ kind: "applyPower", power: "vulnerable", amount: 3, to: "enemy" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "vulnerable", amount: 4, to: "enemy" }] },
+  },
+  {
+    id: "dismantle",
+    name: "Dismantle",
+    character: "ironclad",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    // Deal damage; hits again if the target is Vulnerable.
+    effects: [
+      { kind: "damage", amount: 8 },
+      { kind: "ifTargetHasPower", power: "vulnerable", then: [{ kind: "damage", amount: 8 }] },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 10 },
+        { kind: "ifTargetHasPower", power: "vulnerable", then: [{ kind: "damage", amount: 10 }] },
+      ],
+    },
+  },
+  {
+    id: "fight_me",
+    name: "Fight Me!",
+    character: "ironclad",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 2,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 5, times: 2 },
+      { kind: "applyPower", power: "strength", amount: 3, to: "self" },
+      { kind: "applyPower", power: "strength", amount: 1, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 6, times: 2 },
+        { kind: "applyPower", power: "strength", amount: 4, to: "self" },
+        { kind: "applyPower", power: "strength", amount: 1, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "taunt",
+    name: "Taunt",
+    character: "ironclad",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "block", amount: 7 },
+      { kind: "applyPower", power: "vulnerable", amount: 1, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 8 },
+        { kind: "applyPower", power: "vulnerable", amount: 2, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "mangle",
+    name: "Mangle",
+    character: "ironclad",
+    type: "attack",
+    rarity: "rare",
+    cost: 3,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 15 },
+      { kind: "applyPower", power: "strength", amount: -10, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 20 },
+        { kind: "applyPower", power: "strength", amount: -15, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "break_a",
+    name: "Break",
+    character: "ironclad",
+    type: "attack",
+    rarity: "rare",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 20 },
+      { kind: "applyPower", power: "vulnerable", amount: 5, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 30 },
+        { kind: "applyPower", power: "vulnerable", amount: 7, to: "enemy" },
+      ],
+    },
+  },
 ];

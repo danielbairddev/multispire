@@ -473,6 +473,14 @@ export class GameEngine {
         p.block += plated;
         this.blockEvents.push({ playerId: p.id, playerName: p.name, cardName: "Plated Armor", amount: plated });
       }
+      // Plating (StS2): gain Block equal to the stacks, then the stacks decay by 1.
+      const plating = p.powers.get("plating") ?? 0;
+      if (plating > 0) {
+        p.block += plating;
+        this.blockEvents.push({ playerId: p.id, playerName: p.name, cardName: "Plating", amount: plating });
+        if (plating - 1 <= 0) p.powers.delete("plating");
+        else p.powers.set("plating", plating - 1);
+      }
       p.blockedThisTurn = false;
       p.passed = false;
     }

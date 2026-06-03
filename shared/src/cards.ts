@@ -336,6 +336,8 @@ export type PowerId =
   | "void_form"
   // Defect Focus: increases the value of Lightning, Frost, and Dark orbs.
   | "focus"
+  // Ironclad Plating (StS2): gain this much Block each turn; decreases by 1 each turn.
+  | "plating"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {
