@@ -754,8 +754,9 @@ function renderJoin(): void {
 
         <details class="import" ${ui.loadoutText ? "open" : ""}>
           <summary>Import deck / loadout (paste JSON)</summary>
-          <p class="muted small">Paste loadout JSON, or load a file. Leave blank to use the default Ironclad deck (or build one above).</p>
+          <p class="muted small">Paste loadout JSON, or load a file, then "Import" to set it as your active deck — no need to start a game first. Leave blank to use the default Ironclad deck (or build one above).</p>
           <div class="import-actions">
+            <button id="importDeck" type="button" class="primary">✅ Import this deck</button>
             <button id="example" type="button">Load Ironclad example</button>
             <button id="exampleRegent" type="button">Load Regent example</button>
             <label class="filebtn">Load file…<input id="file" type="file" accept="application/json,.json" hidden /></label>
@@ -776,6 +777,33 @@ function renderJoin(): void {
 
   const ta = wrap.querySelector("#loadout") as HTMLTextAreaElement;
   ta.addEventListener("input", () => (ui.loadoutText = ta.value));
+
+  // Import the pasted JSON as the active deck right now (no game required).
+  wrap.querySelector("#importDeck")!.addEventListener("click", () => {
+    const errBox = wrap.querySelector("#loaderr") as HTMLElement;
+    errBox.textContent = "";
+    const text = ta.value.trim();
+    if (!text) {
+      errBox.textContent = "Paste some loadout JSON first.";
+      return;
+    }
+    let loadout: Loadout;
+    try {
+      loadout = JSON.parse(text) as Loadout;
+    } catch (e) {
+      errBox.textContent = "Invalid JSON: " + (e as Error).message;
+      return;
+    }
+    if (!loadout || !Array.isArray(loadout.deck) || loadout.deck.length === 0) {
+      errBox.textContent = 'Loadout needs a non-empty "deck" array.';
+      return;
+    }
+    ui.deckDraft = loadout;
+    ui.loadoutText = "";
+    rememberDeck(loadout);
+    flashNotice(`Imported "${loadout.name ?? "deck"}" (${draftCardCount(loadout)} cards) — ready to use.`);
+    render();
+  });
 
   wrap.querySelector("#example")!.addEventListener("click", () => {
     ui.loadoutText = JSON.stringify(EXAMPLE_LOADOUT, null, 2);
