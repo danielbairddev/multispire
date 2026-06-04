@@ -1253,8 +1253,12 @@ export class GameEngine {
         const accuracyBonus = def.id === "shiv" ? (source.powers.get("accuracy") ?? 0) : 0;
         // Kingly Punch: this instance has grown each time it was drawn this combat.
         const drawBonus = instUid ? this.drawDamageBonus.get(instUid) ?? 0 : 0;
+        // Soul Storm: +damage per Soul card in your Exhaust pile.
+        const soulBonus = eff.perSoulInExhaust
+          ? eff.perSoulInExhaust * source.exhaust.filter((c) => c.id === "soul").length
+          : 0;
         const base =
-          eff.amount + strikeBonus + rampageBonus + starCardBonus + skillBonus + starGainBonus + createdBonus + vigor + accuracyBonus + drawBonus;
+          eff.amount + strikeBonus + rampageBonus + starCardBonus + skillBonus + starGainBonus + createdBonus + vigor + accuracyBonus + drawBonus + soulBonus;
         // Monarch's Gaze: attacking an enemy saps 1 Strength from it this turn.
         const gaze = source.powers.get("monarchs_gaze") ?? 0;
         for (const tid of targets) {
@@ -1320,6 +1324,24 @@ export class GameEngine {
             cardName: def.name,
             // Snapshot the source's current block now: later cards can't change it.
             perHit: this.computeDamage(Math.max(0, source.block), source, tgt, false),
+            times: 1,
+          });
+        }
+        break;
+      }
+      case "damageEqualToTargetDoom": {
+        // Time's Up: deal damage equal to the target's current Doom.
+        for (const tid of targets) {
+          const tgt = this.players.get(tid);
+          if (!tgt) continue;
+          const doom = tgt.powers.get("doom") ?? 0;
+          if (doom <= 0) continue;
+          this.pending.push({
+            uid: uid("atk"),
+            sourceId: source.id,
+            targetId: tid,
+            cardName: def.name,
+            perHit: this.computeDamage(doom, source, tgt, false),
             times: 1,
           });
         }
@@ -2713,13 +2735,17 @@ export function describeCard(def: CardDef): string {
         const starGain = e.perStarGainedThisTurn ? `, +${e.perStarGainedThisTurn} per Star Energy gained this turn` : "";
         const created = e.perCardCreatedThisCombat ? `, +${e.perCardCreatedThisCombat} per card created this combat` : "";
         const koStars = e.starsOnKill ? `, gain ${e.starsOnKill} Star Energy if this kills` : "";
+        const soul = e.perSoulInExhaust ? `, +${e.perSoulInExhaust} per Soul in your Exhaust pile` : "";
         parts.push(
-          `Deal ${e.amount}${e.times && e.times > 1 ? ` x${e.times}` : ""} damage${mul}${per}${life}${kill}${ramp}${star}${skill}${starGain}${created}${koStars}${empty}`,
+          `Deal ${e.amount}${e.times && e.times > 1 ? ` x${e.times}` : ""} damage${mul}${per}${life}${kill}${ramp}${star}${skill}${starGain}${created}${koStars}${soul}${empty}`,
         );
         break;
       }
       case "damageEqualToBlock":
         parts.push("Deal damage equal to your Block");
+        break;
+      case "damageEqualToTargetDoom":
+        parts.push("Deal damage equal to the target's Doom");
         break;
       case "block":
         parts.push(`Gain ${e.amount} Block`);

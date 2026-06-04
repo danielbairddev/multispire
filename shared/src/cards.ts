@@ -51,6 +51,8 @@ export type Effect =
       starsOnKill?: number;
       // Only deal the damage if the caster's draw pile is empty (e.g. Grand Finale).
       onlyIfDrawEmpty?: boolean;
+      // Adds this much damage per Soul card in your Exhaust pile (e.g. Soul Storm).
+      perSoulInExhaust?: number;
     }
   | { kind: "block"; amount: number }
   | { kind: "applyPower"; power: PowerId; amount: number; to: "enemy" | "self" }
@@ -139,6 +141,8 @@ export type Effect =
   | { kind: "triggerDarkPassive"; times?: number }
   // Run `then` only if you've applied Doom this turn (e.g. Death's Door doubles its Block).
   | { kind: "ifDoomAppliedThisTurn"; then: Effect[] }
+  // Deal damage to the target(s) equal to their current Doom (e.g. Time's Up).
+  | { kind: "damageEqualToTargetDoom" }
   // Upgrade every card in your hand, draw, and discard piles for the rest of the
   // combat (e.g. Apotheosis).
   | { kind: "upgradeAllCards" }

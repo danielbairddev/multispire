@@ -1424,4 +1424,23 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert((blockOf(g, "a") ?? 0) - b1 === 12, "Death's Door doubles to 12 after Doom, got " + ((blockOf(g, "a") ?? 0) - b1));
 }
 
+// --- Time's Up: deal damage equal to the target's Doom ---
+{
+  const g = new GameEngine("timesup", seededRng(8));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "scourge" }, { id: "times_up" }, { id: "strike_n" }, { id: "defend_n" }, { id: "bodyguard" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  play(g, "a", "scourge", "b"); // Doom 13
+  const before = hpOf(g, "b");
+  play(g, "a", "times_up", "b"); // damage = 13 (deferred)
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 13, "Time's Up deals damage equal to Doom (13), got " + (before - hpOf(g, "b")));
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);
