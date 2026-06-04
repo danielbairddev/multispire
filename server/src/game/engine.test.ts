@@ -1482,4 +1482,48 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert(before - hpOf(g, "b") === 15, "Unleash deals 6 + Osty HP(5) + Calcify(4) = 15, got " + (before - hpOf(g, "b")));
 }
 
+// --- Debilitate: Exposed makes Vulnerable twice as effective ---
+{
+  const g = new GameEngine("debil", seededRng(11));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "putrefy" }, { id: "debilitate" }, { id: "strike_n" }, { id: "defend_n" }, { id: "bodyguard" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 300 });
+  g.start();
+  ensure(g, "a");
+  play(g, "a", "putrefy", "b"); // Vulnerable 2 on B
+  play(g, "a", "debilitate", "b"); // 10 dmg (×1.5 vuln = 15) + Exposed 3
+  const before = hpOf(g, "b");
+  play(g, "a", "strike_n", "b"); // 6 × 2.0 (vuln + Exposed) = 12
+  finishTurn(g);
+  // Debilitate already applied its 15 before `before`; Strike adds the doubled 12.
+  void before;
+  // B took 15 (Debilitate) + 12 (Strike) = 27 total this turn.
+  assert(hpOf(g, "b") === 300 - 27, "Exposed doubles Vulnerable: Strike hit for 12, total 27, got " + (300 - hpOf(g, "b")));
+}
+
+// --- Sculpting Strike: adds Ethereal to a chosen hand card (Exhausts at turn end) ---
+{
+  const g = new GameEngine("sculpt", seededRng(12));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "sculpting_strike" }, { id: "strike_n" }, { id: "strike_n" }, { id: "defend_n" }, { id: "bodyguard" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  assert(play(g, "a", "sculpting_strike", "b") === null, "Sculpting Strike plays");
+  assert(g.viewFor("a").pendingChoice != null, "Sculpting Strike pauses to pick a card");
+  const target = handOf(g, "a").find((c) => c.id === "defend_n")!;
+  assert(g.resolveChoice("a", [target.uid]) === null, "choose the card to make Ethereal");
+  finishTurn(g);
+  const exhaust = g.viewFor("a").players.find((p) => p.id === "a")!.exhaustPile ?? [];
+  assert(exhaust.some((c) => c.id === "defend_n"), "the Ethereal'd card was Exhausted at end of turn");
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

@@ -349,16 +349,15 @@ export const NECROBINDER_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "enemy",
-    // StS2: debuffs are twice as effective on the target; approximated here as a
-    // Vulnerable application alongside the hit.
+    // Weak and Vulnerable are twice as effective on the enemy for the next 3 (4) turns.
     effects: [
       { kind: "damage", amount: 10 },
-      { kind: "applyPower", power: "vulnerable", amount: 2, to: "enemy" },
+      { kind: "applyPower", power: "exposed", amount: 3, to: "enemy" },
     ],
     upgrade: {
       effects: [
         { kind: "damage", amount: 12 },
-        { kind: "applyPower", power: "vulnerable", amount: 3, to: "enemy" },
+        { kind: "applyPower", power: "exposed", amount: 4, to: "enemy" },
       ],
     },
   },
@@ -424,9 +423,17 @@ export const NECROBINDER_CARDS: CardDef[] = [
     rarity: "common",
     cost: 1,
     target: "enemy",
-    // StS2 also adds Ethereal to a card in hand; that rider is a later pass.
-    effects: [{ kind: "damage", amount: 9 }],
-    upgrade: { effects: [{ kind: "damage", amount: 12 }] },
+    // Deal damage, then add Ethereal to a chosen card in your hand.
+    effects: [
+      { kind: "damage", amount: 9 },
+      { kind: "makeEtherealChosen", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 12 },
+        { kind: "makeEtherealChosen", amount: 1 },
+      ],
+    },
   },
   {
     id: "cleanse",
@@ -544,10 +551,18 @@ export const NECROBINDER_CARDS: CardDef[] = [
     rarity: "rare",
     cost: 0,
     target: "enemy",
-    retain: true,
-    // StS2 also spreads the enemy's debuffs; that rider is a later pass.
-    effects: [{ kind: "damage", amount: 7 }],
-    upgrade: { effects: [{ kind: "damage", amount: 9 }] },
+    // Deal damage, then apply this enemy's debuffs to all other enemies.
+    effects: [
+      { kind: "damage", amount: 7 },
+      { kind: "spreadDebuffs" },
+    ],
+    upgrade: {
+      retain: true,
+      effects: [
+        { kind: "damage", amount: 9 },
+        { kind: "spreadDebuffs" },
+      ],
+    },
   },
   {
     id: "defy",

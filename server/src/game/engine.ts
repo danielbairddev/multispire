@@ -102,6 +102,8 @@ interface InternalPlayer {
   discardsThisTurn: number;
   // Whether the owner has applied Doom this turn (Death's Door doubles its Block).
   doomAppliedThisTurn: boolean;
+  // Card instances made Ethereal this combat (e.g. Sculpting Strike), by uid.
+  etherealUids: Set<string>;
   // --- Regent resources ---
   // Star Energy: a second resource that persists across turns within a combat.
   stars: number;
@@ -164,7 +166,8 @@ type ChoiceKind =
   | "replaySkill"
   | "discardChosen"
   | "duplicateChosen"
-  | "discover";
+  | "discover"
+  | "makeEthereal";
 interface PendingChoice {
   playerId: string;
   kind: ChoiceKind;
@@ -267,6 +270,7 @@ export class GameEngine {
       hpLossCount: 0,
       discardsThisTurn: 0,
       doomAppliedThisTurn: false,
+      etherealUids: new Set<string>(),
       stars: 0,
       forge: 0,
       usesStars: seed.deck.some((spec) => resolveCard(spec.id, false)?.character === "regent"),
@@ -406,9 +410,12 @@ export class GameEngine {
       p.hand = [];
       for (const c of leftover) {
         const cdef = resolveCard(c.id, c.upgraded);
-        if (keepAll || cdef?.retain) p.hand.push(c);
-        else if (cdef?.ethereal) this.exhaustCard(p, c);
-        else p.discard.push(c);
+        const isEthereal = cdef?.ethereal || p.etherealUids.has(c.uid);
+        if (keepAll || (cdef?.retain && !isEthereal)) p.hand.push(c);
+        else if (isEthereal) {
+          p.etherealUids.delete(c.uid);
+          this.exhaustCard(p, c);
+        } else p.discard.push(c);
       }
       // New turn: reset per-turn counters and pay out any queued (Convergence,
       // Glow, Refine Blade, Hidden Cache…) resources before drawing.
@@ -993,7 +1000,8 @@ export class GameEngine {
         | "replayChosenSkill"
         | "discard"
         | "duplicateChosen"
-        | "discover";
+        | "discover"
+        | "makeEtherealChosen";
     }
   > {
     // A player-chosen discard pauses; a random discard resolves immediately.
@@ -1004,7 +1012,8 @@ export class GameEngine {
       eff.kind === "exhaustChosen" ||
       eff.kind === "replayChosenSkill" ||
       eff.kind === "duplicateChosen" ||
-      eff.kind === "discover"
+      eff.kind === "discover" ||
+      eff.kind === "makeEtherealChosen"
     );
   }
 
@@ -1037,7 +1046,13 @@ export class GameEngine {
       return this.beginDiscover(eff, source, targets, def, remaining, instUid);
     }
     const kind: ChoiceKind =
-      eff.kind === "replayChosenSkill" ? "replaySkill" : eff.kind === "discard" ? "discardChosen" : eff.kind;
+      eff.kind === "replayChosenSkill"
+        ? "replaySkill"
+        : eff.kind === "discard"
+          ? "discardChosen"
+          : eff.kind === "makeEtherealChosen"
+            ? "makeEthereal"
+            : eff.kind;
     const replayTimes = eff.kind === "replayChosenSkill" ? eff.times : undefined;
     const dupAmount = eff.kind === "duplicateChosen" ? eff.amount : undefined;
     const sourcePile: "hand" | "discard" = kind === "putDiscardOnDraw" ? "discard" : "hand";
@@ -1057,7 +1072,7 @@ export class GameEngine {
     const pick =
       kind === "replaySkill" || kind === "duplicateChosen"
         ? 1
-        : Math.min((eff as { amount: number }).amount, eligible.length);
+        : Math.min((eff as { amount?: number }).amount ?? 1, eligible.length);
     if (eligible.length <= pick) {
       // Forced selection of everything eligible; resolve immediately.
       this.performChoice(kind, source, eligible.map((c) => c.uid), replayTimes, dupAmount);
@@ -1158,6 +1173,8 @@ export class GameEngine {
         return `Choose a card to copy into your hand`;
       case "discover":
         return `Discover a card`;
+      case "makeEthereal":
+        return `Choose ${n} in your hand to make Ethereal`;
     }
   }
 
@@ -1181,6 +1198,19 @@ export class GameEngine {
         }
         this.pushLog(`✦ ${source.name} copies ${d?.name ?? orig.id}${n > 1 ? ` ×${n}` : ""} into their hand.`);
       }
+      return;
+    }
+    if (kind === "makeEthereal") {
+      // Tag the chosen hand cards as Ethereal for the rest of combat (don't move them).
+      for (const u of uids) {
+        if (source.hand.some((c) => c.uid === u)) source.etherealUids.add(u);
+      }
+      const names = uids
+        .map((u) => source.hand.find((c) => c.uid === u))
+        .map((c) => (c ? resolveCard(c.id, c.upgraded)?.name ?? c.id : ""))
+        .filter(Boolean)
+        .join(", ");
+      this.pushLog(`✦ ${source.name} makes ${names} Ethereal.`);
       return;
     }
     const pile = kind === "putDiscardOnDraw" ? source.discard : source.hand;
@@ -1356,6 +1386,23 @@ export class GameEngine {
             perHit: this.computeDamage(Math.max(0, source.block), source, tgt, false),
             times: 1,
           });
+        }
+        break;
+      }
+      case "spreadDebuffs": {
+        // Misery: copy every debuff on the target enemy onto all other enemies.
+        const target = this.players.get(targets[0]);
+        if (target) {
+          const others = this.aliveEnemies(source.id).filter((id) => id !== target.id);
+          for (const [power, amount] of target.powers) {
+            if (amount <= 0) continue;
+            if (power === "strength_down" || power === "dexterity_down" || power === "thorns_down") continue;
+            if (getPower(power).kind !== "debuff") continue;
+            for (const oid of others) {
+              const o = this.players.get(oid);
+              if (o) o.powers.set(power, (o.powers.get(power) ?? 0) + amount);
+            }
+          }
         }
         break;
       }
@@ -1857,6 +1904,7 @@ export class GameEngine {
       case "replayChosenSkill":
       case "duplicateChosen":
       case "discover":
+      case "makeEtherealChosen":
         // Interactive choices are intercepted by applyEffectList before reaching
         // here. (Only reached if nested in onExhaust/ifTargetHasPower, which our
         // cards avoid; treated as a no-op rather than pausing in those contexts.)
@@ -1884,8 +1932,9 @@ export class GameEngine {
     // times. Weak/Vulnerable still apply so a debuff landed earlier this turn
     // counts.
     let d = base + (addStrength ? (src.powers.get("strength") ?? 0) * strengthMul : 0);
-    if ((src.powers.get("weak") ?? 0) > 0) d *= WEAK_MULT;
-    if ((tgt.powers.get("vulnerable") ?? 0) > 0) d *= VULNERABLE_MULT;
+    // Debilitate's "Exposed" makes the enemy's own Weak/Vulnerable twice as strong.
+    if ((src.powers.get("weak") ?? 0) > 0) d *= (src.powers.get("exposed") ?? 0) > 0 ? 0.5 : WEAK_MULT;
+    if ((tgt.powers.get("vulnerable") ?? 0) > 0) d *= (tgt.powers.get("exposed") ?? 0) > 0 ? 2 : VULNERABLE_MULT;
     return Math.max(0, Math.floor(d));
   }
 
@@ -2782,6 +2831,9 @@ export function describeCard(def: CardDef): string {
       case "damageEqualToTargetDoom":
         parts.push("Deal damage equal to the target's Doom");
         break;
+      case "spreadDebuffs":
+        parts.push("Apply the enemy's debuffs to all other enemies");
+        break;
       case "block":
         parts.push(`Gain ${e.amount} Block`);
         break;
@@ -2906,6 +2958,11 @@ export function describeCard(def: CardDef): string {
         const of = e.amount ?? 3;
         const pile = (e.pile ?? "hand") === "draw" ? "the top of your draw pile" : "your hand";
         parts.push(`Discover a ${pool} card (choose 1 of ${of}) and add it to ${pile}`);
+        break;
+      }
+      case "makeEtherealChosen": {
+        const n = e.amount ?? 1;
+        parts.push(`Add Ethereal to ${n > 1 ? `${n} cards` : "a card"} in your hand`);
         break;
       }
       case "fillHandWith": {

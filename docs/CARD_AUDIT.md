@@ -40,14 +40,18 @@ Afterlife, Deathbringer, Putrefy, Enfeebling Touch, Drain Power, Severance (Soul
 Death's Door (doubles on Doom), Spur (Summon + heal Osty), Cleanse (Summon +
 exhaust draw), Capture Spirit (lose-HP + Soul), Soul token.
 
-### Implemented but approximated ⚠️ — MUST FIX
-- ✅ FIXED: **Unleash** — now Osty 6/9 + Osty's current HP. **Calcify** added
-  (Osty attacks +4/6).
-- **Debilitate** — modeled as dmg + Vulnerable; real card makes debuffs 2×
-  effective on the target (debuff-amplify) — needs a target debuff-amp power.
-- **Sculpting Strike** — dmg only; needs an "add Ethereal to a chosen hand card"
-  choice mechanic.
-- **Misery** — dmg + Retain; needs "spread this enemy's debuffs to all enemies".
+### Approximations — ALL FIXED ✅
+- **Unleash** — Osty 6/9 + Osty's current HP (+ Calcify added: Osty attacks +4/6).
+- **Debilitate** — now applies **Exposed** (Weak/Vulnerable are 2× effective on
+  the enemy for 3/4 turns).
+- **Sculpting Strike** — now adds **Ethereal to a chosen hand card** (per-instance
+  Ethereal + a choice prompt).
+- **Misery** — now **spreads the enemy's debuffs to all other enemies** (Retain
+  is upgrade-only, matching the wiki).
+
+Necrobinder has **no remaining approximations** — every implemented card is
+faithful. (Still ❌ missing: the on-event power cards and a few X-cost/utility
+cards listed below.)
 
 ### Missing ❌ (StS2 Necrobinder cards not yet implemented)
 Grouped by what each needs.

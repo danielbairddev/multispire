@@ -144,6 +144,11 @@ export type Effect =
   | { kind: "ifDoomAppliedThisTurn"; then: Effect[] }
   // Deal damage to the target(s) equal to their current Doom (e.g. Time's Up).
   | { kind: "damageEqualToTargetDoom" }
+  // Copy every debuff on the target enemy onto all OTHER enemies (e.g. Misery).
+  | { kind: "spreadDebuffs" }
+  // Interactive: choose `amount` (default 1) card(s) in your hand to make Ethereal
+  // for the rest of the combat (e.g. Sculpting Strike). The engine pauses.
+  | { kind: "makeEtherealChosen"; amount?: number }
   // Upgrade every card in your hand, draw, and discard piles for the rest of the
   // combat (e.g. Apotheosis).
   | { kind: "upgradeAllCards" }
@@ -385,6 +390,8 @@ export type PowerId =
   | "reaper_form"
   // Calcify (Necrobinder): Osty's attacks deal this much additional damage.
   | "calcify"
+  // Exposed (Debilitate): Weak and Vulnerable are twice as effective on this enemy.
+  | "exposed"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

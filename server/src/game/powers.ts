@@ -127,6 +127,8 @@ export const POWERS: Record<string, PowerDef> = {
   reaper_form: { id: "reaper_form", name: "Reaper Form", kind: "buff" },
   // Calcify (Necrobinder): Osty's attacks deal additional damage.
   calcify: { id: "calcify", name: "Calcify", kind: "buff" },
+  // Exposed (Debilitate): Weak/Vulnerable are twice as effective; ticks down each turn.
+  exposed: { id: "exposed", name: "Exposed", kind: "debuff", decaysPerTurn: true },
 };
 
 export function getPower(id: PowerId): PowerDef {
