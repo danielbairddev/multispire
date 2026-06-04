@@ -132,6 +132,10 @@ export type Effect =
   // Upgrade every card in your hand, draw, and discard piles for the rest of the
   // combat (e.g. Apotheosis).
   | { kind: "upgradeAllCards" }
+  // Apply Doom to the target(s) with optional scaling: `perExistingTen` adds that
+  // much per 10 Doom already on the target (No Escape); `perCardThisTurn` adds
+  // that much per card you've played this turn (Oblivion).
+  | { kind: "applyDoom"; amount: number; perExistingTen?: number; perCardThisTurn?: number }
   // Add copies of `cardId` to hand until the hand is full (e.g. Crash Landing's
   // "Fill your hand with Debris").
   | { kind: "fillHandWith"; cardId: string }

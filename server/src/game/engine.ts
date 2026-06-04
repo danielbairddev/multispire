@@ -1507,6 +1507,21 @@ export class GameEngine {
         }
         break;
       }
+      case "applyDoom": {
+        for (const tid of targets) {
+          const t = this.players.get(tid);
+          if (!t) continue;
+          const existing = t.powers.get("doom") ?? 0;
+          let amt = eff.amount;
+          if (eff.perExistingTen) amt += eff.perExistingTen * Math.floor(existing / 10);
+          if (eff.perCardThisTurn) amt += eff.perCardThisTurn * source.cardsPlayedThisTurn;
+          // Delegate to applyPower so Artifact negation, Shroud, and logging apply.
+          if (amt > 0) {
+            this.applyEffect({ kind: "applyPower", power: "doom", amount: amt, to: "enemy" }, source, [tid], def, instUid);
+          }
+        }
+        break;
+      }
       case "upgradeAllCards": {
         // Apotheosis: upgrade every card across hand, draw, and discard piles.
         for (const pile of [source.hand, source.draw, source.discard]) {
@@ -2854,6 +2869,13 @@ export function describeCard(def: CardDef): string {
       case "upgradeAllCards":
         parts.push("Upgrade all your cards for the rest of combat");
         break;
+      case "applyDoom": {
+        let t = `Apply ${e.amount} Doom`;
+        if (e.perExistingTen) t += `, +${e.perExistingTen} per 10 Doom already on the target`;
+        if (e.perCardThisTurn) t += `, +${e.perCardThisTurn} per card played this turn`;
+        parts.push(t);
+        break;
+      }
       case "unimplemented":
         parts.push("(unimplemented)");
         break;

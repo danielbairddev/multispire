@@ -238,4 +238,17 @@ export const NEUTRAL_CARDS: CardDef[] = [
     ethereal: true,
     effects: [],
   },
+  {
+    id: "clumsy",
+    name: "Clumsy",
+    character: "neutral",
+    type: "curse",
+    rarity: "special",
+    cost: -2,
+    target: "none",
+    // A curse: unplayable and Ethereal.
+    unplayable: true,
+    ethereal: true,
+    effects: [],
+  },
 ];

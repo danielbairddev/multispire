@@ -227,9 +227,9 @@ export const NECROBINDER_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "enemy",
-    // StS2 adds +5 Doom per 10 existing Doom; that rider is a later pass.
-    effects: [{ kind: "applyPower", power: "doom", amount: 10, to: "enemy" }],
-    upgrade: { effects: [{ kind: "applyPower", power: "doom", amount: 15, to: "enemy" }] },
+    // Apply Doom, +5 more for every 10 Doom the target already has.
+    effects: [{ kind: "applyDoom", amount: 10, perExistingTen: 5 }],
+    upgrade: { effects: [{ kind: "applyDoom", amount: 15, perExistingTen: 5 }] },
   },
   {
     id: "putrefy",
@@ -477,5 +477,129 @@ export const NECROBINDER_CARDS: CardDef[] = [
     // StS2 gives every player Souls; in a duel you add them to your own hand.
     effects: [{ kind: "addCardToPile", cardId: "soul", amount: 3, pile: "hand" }],
     upgrade: { effects: [{ kind: "addCardToPile", cardId: "soul", amount: 4, pile: "hand" }] },
+  },
+  {
+    id: "oblivion",
+    name: "Oblivion",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "rare",
+    cost: 0,
+    target: "all_enemies",
+    // Apply Doom equal to the number of cards you've played this turn.
+    effects: [{ kind: "applyDoom", amount: 0, perCardThisTurn: 3 }],
+    upgrade: { effects: [{ kind: "applyDoom", amount: 0, perCardThisTurn: 4 }] },
+  },
+  {
+    id: "misery",
+    name: "Misery",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "rare",
+    cost: 0,
+    target: "enemy",
+    retain: true,
+    // StS2 also spreads the enemy's debuffs; that rider is a later pass.
+    effects: [{ kind: "damage", amount: 7 }],
+    upgrade: { effects: [{ kind: "damage", amount: 9 }] },
+  },
+  {
+    id: "defy",
+    name: "Defy",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    ethereal: true,
+    effects: [
+      { kind: "block", amount: 6 },
+      { kind: "applyPower", power: "weak", amount: 1, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 9 },
+        { kind: "applyPower", power: "weak", amount: 1, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "deaths_door",
+    name: "Death's Door",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    // StS2 doubles the Block if you applied Doom this turn; rider is a later pass.
+    effects: [{ kind: "block", amount: 6 }],
+    upgrade: { effects: [{ kind: "block", amount: 7 }] },
+  },
+  {
+    id: "enfeebling_touch",
+    name: "Enfeebling Touch",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    ethereal: true,
+    effects: [{ kind: "applyPower", power: "strength", amount: -8, to: "enemy" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "strength", amount: -11, to: "enemy" }] },
+  },
+  {
+    id: "drain_power",
+    name: "Drain Power",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    effects: [{ kind: "damage", amount: 10 }],
+    upgrade: { effects: [{ kind: "damage", amount: 12 }] },
+  },
+  {
+    id: "capture_spirit",
+    name: "Capture Spirit",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    // StS2 makes the enemy lose HP directly; approximated as damage here.
+    effects: [
+      { kind: "damage", amount: 3 },
+      { kind: "addCardToPile", cardId: "soul", amount: 3, pile: "hand" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 4 },
+        { kind: "addCardToPile", cardId: "soul", amount: 4, pile: "hand" },
+      ],
+    },
+  },
+  {
+    id: "severance",
+    name: "Severance",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 2,
+    target: "enemy",
+    // Add a Soul to your hand, draw pile, and discard pile.
+    effects: [
+      { kind: "damage", amount: 13 },
+      { kind: "addCardToPile", cardId: "soul", amount: 1, pile: "hand" },
+      { kind: "addCardToPile", cardId: "soul", amount: 1, pile: "draw" },
+      { kind: "addCardToPile", cardId: "soul", amount: 1, pile: "discard" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 18 },
+        { kind: "addCardToPile", cardId: "soul", amount: 1, pile: "hand" },
+        { kind: "addCardToPile", cardId: "soul", amount: 1, pile: "draw" },
+        { kind: "addCardToPile", cardId: "soul", amount: 1, pile: "discard" },
+      ],
+    },
   },
 ];

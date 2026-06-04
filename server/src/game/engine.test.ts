@@ -1375,10 +1375,32 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   for (const id of ["debilitate", "shroud", "spirit_of_ash", "spur", "graveblast", "apotheosis", "ascenders_bane"]) {
     assert(resolveCard(id, false) != null, `card id "${id}" resolves`);
   }
+  for (const id of ["misery", "oblivion", "clumsy", "defy", "deaths_door", "enfeebling_touch", "drain_power", "capture_spirit", "severance", "soul"]) {
+    assert(resolveCard(id, false) != null, `card id "${id}" resolves`);
+  }
   // Punctuation-insensitive id matching (apostrophes/commas/etc.).
-  for (const raw of ["Ascender's Bane", "ascenders_bane", "Decisions, Decisions", "GUARDS!!!", "Soul", "Seance"]) {
+  for (const raw of ["Ascender's Bane", "ascenders_bane", "Decisions, Decisions", "GUARDS!!!", "Soul", "Seance", "Death's Door", "Capture Spirit"]) {
     assert(resolveCard(canonicalCardId(raw), false) != null, `"${raw}" resolves to a card`);
   }
+}
+
+// --- No Escape: Doom scales with the Doom already on the target ---
+{
+  const g = new GameEngine("noescape", seededRng(6));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "scourge" }, { id: "scourge" }, { id: "no_escape" }, { id: "strike_n" }, { id: "defend_n" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 300 });
+  g.start();
+  ensure(g, "a");
+  play(g, "a", "scourge", "b"); // Doom 13
+  play(g, "a", "scourge", "b"); // Doom 26
+  assert(powerOf(g, "b", "doom") === 26, "B has 26 Doom before No Escape");
+  play(g, "a", "no_escape", "b"); // +10 + 5×floor(26/10) = +20 -> 46
+  assert(powerOf(g, "b", "doom") === 46, "No Escape scales (26 + 10 + 5×2 = 46), got " + powerOf(g, "b", "doom"));
 }
 
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);
