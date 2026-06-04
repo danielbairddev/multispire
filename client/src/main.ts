@@ -36,7 +36,7 @@ interface BuilderState {
 }
 
 interface UIState {
-  screen: "join" | "lobby" | "game" | "deckbuilder";
+  screen: "join" | "lobby" | "game" | "deckbuilder" | "reference";
   playerId: string | null;
   matchId: string | null;
   lobby: LobbyView | null;
@@ -266,13 +266,13 @@ function join(name: string, matchId: string | undefined, mode: MatchMode, loadou
   net.send({ t: "join", name, matchId, mode, loadout });
 }
 
-// -------------------------------------------------------------- deckbuilder
+// -------------------------------------------------------------- reference
 
-async function openDeckbuilder(): Promise<void> {
+// Fetch the card + relic catalogs once (shared by the deckbuilder and reference).
+async function ensureCatalogs(): Promise<void> {
   if (!ui.catalog) {
     try {
-      const res = await fetch("/api/cards");
-      ui.catalog = (await res.json()) as CardCatalogEntry[];
+      ui.catalog = (await (await fetch("/api/cards")).json()) as CardCatalogEntry[];
     } catch {
       ui.error = "Couldn't load the card list.";
       ui.catalog = [];
@@ -280,12 +280,105 @@ async function openDeckbuilder(): Promise<void> {
   }
   if (!ui.relicCatalog) {
     try {
-      const res = await fetch("/api/relics");
-      ui.relicCatalog = (await res.json()) as RelicCatalogEntry[];
+      ui.relicCatalog = (await (await fetch("/api/relics")).json()) as RelicCatalogEntry[];
     } catch {
       ui.relicCatalog = [];
     }
   }
+}
+
+const REFERENCE_HERO_ORDER = ["ironclad", "silent", "regent", "defect", "necrobinder", "neutral"];
+
+// Plain-text dump of the loadout format + every card and relic id, made to paste
+// into another LLM for generating decks.
+function referenceText(): string {
+  const cards = (ui.catalog ?? []).filter((c) => c.supported !== false);
+  const relics = [...(ui.relicCatalog ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+  const out: string[] = [];
+  out.push("# Multispire deck / loadout reference");
+  out.push("");
+  out.push("## Loadout JSON format");
+  out.push(
+    JSON.stringify(
+      {
+        name: "My Deck",
+        character: "ironclad",
+        maxHp: 75,
+        relics: ["burning_blood"],
+        deck: [{ id: "strike_r", count: 5 }, { id: "bash", count: 1, upgraded: true }, "defend_r"],
+      },
+      null,
+      2,
+    ),
+  );
+  out.push("");
+  out.push("Rules:");
+  out.push("- `deck` is required. Each entry is either a bare card id string (= 1");
+  out.push("  copy, not upgraded) or an object { id, count?, upgraded? }.");
+  out.push("- `relics`, `maxHp` (default 75), `character` (hero filter only), and");
+  out.push("  `name` are optional.");
+  out.push("- Use ONLY the ids listed below. Unknown ids are ignored on import.");
+  out.push("- `count` is the number of copies; `upgraded: true` for the + version.");
+  out.push("");
+  out.push(`## Cards (${cards.length})   format: id | name | type | cost`);
+  for (const ch of REFERENCE_HERO_ORDER) {
+    const list = cards.filter((c) => c.character === ch).sort((a, b) => a.name.localeCompare(b.name));
+    if (!list.length) continue;
+    out.push("");
+    out.push(`### ${ch}`);
+    for (const c of list) {
+      const cost = c.cost === "X" ? "X" : String(c.cost);
+      out.push(`${c.id} | ${c.name} | ${c.type} | ${cost}${c.upgradable ? " | upgradable" : ""}`);
+    }
+  }
+  out.push("");
+  out.push(`## Relics (${relics.length})   format: id | name`);
+  for (const r of relics) out.push(`${r.id} | ${r.name}`);
+  return out.join("\n");
+}
+
+async function openReference(): Promise<void> {
+  await ensureCatalogs();
+  ui.screen = "reference";
+  render();
+}
+
+function renderReference(): void {
+  const text = referenceText();
+  const wrap = el(`
+    <div class="builder reference">
+      <div class="builder-head">
+        <div class="builder-titlerow">
+          <button id="refBack" class="ghost">← Back</button>
+          <h1>Card &amp; relic reference</h1>
+          <button id="refCopy" class="primary">📋 Copy all</button>
+        </div>
+        <p class="muted small">Everything another LLM needs to generate a loadout: the JSON format plus every card and relic id. Copy it and paste it into your model.</p>
+      </div>
+      <textarea id="refText" class="refbox" rows="28" readonly>${escape(text)}</textarea>
+    </div>`);
+  wrap.querySelector("#refBack")!.addEventListener("click", () => {
+    ui.screen = "join";
+    render();
+  });
+  wrap.querySelector("#refCopy")!.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      flashNotice("Copied the reference to your clipboard.");
+    } catch {
+      const ta = wrap.querySelector("#refText") as HTMLTextAreaElement;
+      ta.select();
+      document.execCommand("copy");
+      flashNotice("Copied the reference.");
+    }
+  });
+  app.appendChild(wrap);
+}
+
+// -------------------------------------------------------------- deckbuilder
+
+async function openDeckbuilder(): Promise<void> {
+  await ensureCatalogs();
   // Seed the builder from an existing draft so "Edit" round-trips cleanly.
   if (ui.deckDraft) {
     ui.builder = {
@@ -605,6 +698,7 @@ function render(): void {
   for (const n of ui.notices) toasts.appendChild(el(`<div class="toast notice">${escape(n)}</div>`));
   app.appendChild(toasts);
   if (ui.screen === "join") return renderJoin();
+  if (ui.screen === "reference") return renderReference();
   if (ui.screen === "deckbuilder") return renderDeckbuilder();
   if (ui.screen === "lobby") return renderLobby();
   if (ui.screen === "game") return renderGame();
@@ -646,6 +740,7 @@ function renderJoin(): void {
                  </div>`
               : `<button id="buildDeck" type="button" class="buildlink">🛠 Build a deck</button>`
           }
+          <button id="openRef" type="button" class="buildlink">📋 Card &amp; relic id reference (for LLM deck generation)</button>
         </div>
 
         ${
@@ -676,6 +771,7 @@ function renderJoin(): void {
 
   wrap.querySelector("#buildDeck")?.addEventListener("click", () => void openDeckbuilder());
   wrap.querySelector("#editDeck")?.addEventListener("click", () => void openDeckbuilder());
+  wrap.querySelector("#openRef")?.addEventListener("click", () => void openReference());
   wrap.querySelector("#clearDraft")?.addEventListener("click", clearDeckDraft);
 
   const ta = wrap.querySelector("#loadout") as HTMLTextAreaElement;
