@@ -1554,8 +1554,13 @@ export class GameEngine {
         this.summonOsty(source, eff.amount);
         break;
       case "ostyDamage": {
-        // Osty strikes for a flat amount plus a fraction of his Max HP.
-        const dmg = eff.amount + Math.floor((eff.perOstyMaxHp ?? 0) * source.ostyMaxHp);
+        // Osty strikes for a flat amount + fractions of his Max/current HP + Calcify.
+        const calcify = source.powers.get("calcify") ?? 0;
+        const dmg =
+          eff.amount +
+          Math.floor((eff.perOstyMaxHp ?? 0) * source.ostyMaxHp) +
+          Math.floor((eff.perOstyCurrentHp ?? 0) * source.ostyHp) +
+          calcify;
         for (const tid of targets) {
           const tgt = this.players.get(tid);
           if (!tgt) continue;
@@ -2959,13 +2964,13 @@ export function describeCard(def: CardDef): string {
       case "summon":
         parts.push(`Summon ${e.amount} (give Osty ${e.amount} Max HP)`);
         break;
-      case "ostyDamage":
-        parts.push(
-          e.perOstyMaxHp
-            ? `Osty deals ${e.amount} damage plus ${e.perOstyMaxHp}× his Max HP`
-            : `Osty deals ${e.amount} damage`,
-        );
+      case "ostyDamage": {
+        let t = `Osty deals ${e.amount} damage`;
+        if (e.perOstyCurrentHp) t += e.perOstyCurrentHp === 1 ? " plus his current HP" : ` plus ${e.perOstyCurrentHp}× his current HP`;
+        if (e.perOstyMaxHp) t += ` plus ${e.perOstyMaxHp}× his Max HP`;
+        parts.push(t);
         break;
+      }
       case "sacrificeOsty":
         parts.push(`Osty dies; gain Block equal to ${e.blockPerMaxHp}× his Max HP`);
         break;

@@ -125,6 +125,8 @@ export const POWERS: Record<string, PowerDef> = {
   haunt: { id: "haunt", name: "Haunt", kind: "buff" },
   // Reaper Form (Necrobinder): your Attacks also apply Doom equal to their damage.
   reaper_form: { id: "reaper_form", name: "Reaper Form", kind: "buff" },
+  // Calcify (Necrobinder): Osty's attacks deal additional damage.
+  calcify: { id: "calcify", name: "Calcify", kind: "buff" },
 };
 
 export function getPower(id: PowerId): PowerDef {

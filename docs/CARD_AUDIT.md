@@ -3,10 +3,15 @@
 Single source of truth for auditing every card against the Slay the Spire 2 wiki
 (`slaythespire.wiki.gg/.../StS2_data/*`). Worked through character-by-character.
 
+**Policy:** a card ships **only when fully implemented** (all riders, exact wiki
+numbers). No approximations — if a rider needs a mechanic or data we don't have,
+the card stays ❌ until it can be done in full. Existing ⚠️ approximations are
+bugs to fix, not acceptable states.
+
 **Legend (per card):**
-- ✅ **faithful** — implemented and matches the wiki (numbers + effect).
-- ⚠️ **approx** — playable but a rider/scaling is simplified or dropped.
-- ❌ **missing** — not implemented yet.
+- ✅ **faithful** — fully implemented, matches the wiki.
+- ⚠️ **approx** — TECH DEBT to fix: a rider is simplified/dropped (do not leave).
+- ❌ **missing** — not implemented yet (preferred over an approximation).
 - 🚫 **blocked** — needs a subsystem this PvP engine lacks (allies, gold) or
   data we don't have (token stats).
 
@@ -35,12 +40,14 @@ Afterlife, Deathbringer, Putrefy, Enfeebling Touch, Drain Power, Severance (Soul
 Death's Door (doubles on Doom), Spur (Summon + heal Osty), Cleanse (Summon +
 exhaust draw), Capture Spirit (lose-HP + Soul), Soul token.
 
-### Implemented but approximated ⚠️
-- **Unleash** — Osty 6/9, but the "+ HP scaling" rider is dropped.
+### Implemented but approximated ⚠️ — MUST FIX
+- ✅ FIXED: **Unleash** — now Osty 6/9 + Osty's current HP. **Calcify** added
+  (Osty attacks +4/6).
 - **Debilitate** — modeled as dmg + Vulnerable; real card makes debuffs 2×
-  effective on the target (debuff-amplify) — not modeled.
-- **Sculpting Strike** — dmg only; "add Ethereal to a card in hand" rider dropped.
-- **Misery** — dmg + Retain; "spread the enemy's debuffs" rider dropped.
+  effective on the target (debuff-amplify) — needs a target debuff-amp power.
+- **Sculpting Strike** — dmg only; needs an "add Ethereal to a chosen hand card"
+  choice mechanic.
+- **Misery** — dmg + Retain; needs "spread this enemy's debuffs to all enemies".
 
 ### Missing ❌ (StS2 Necrobinder cards not yet implemented)
 Grouped by what each needs.

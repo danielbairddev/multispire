@@ -49,8 +49,9 @@ export const NECROBINDER_CARDS: CardDef[] = [
     rarity: "basic",
     cost: 1,
     target: "enemy",
-    effects: [{ kind: "ostyDamage", amount: 6 }],
-    upgrade: { effects: [{ kind: "ostyDamage", amount: 9 }] },
+    // Osty deals 6 (9) damage plus his current HP.
+    effects: [{ kind: "ostyDamage", amount: 6, perOstyCurrentHp: 1 }],
+    upgrade: { effects: [{ kind: "ostyDamage", amount: 9, perOstyCurrentHp: 1 }] },
   },
 
   // ---- Commons ----
@@ -791,6 +792,18 @@ export const NECROBINDER_CARDS: CardDef[] = [
     target: "self",
     effects: [{ kind: "applyPower", power: "haunt", amount: 6, to: "self" }],
     upgrade: { effects: [{ kind: "applyPower", power: "haunt", amount: 8, to: "self" }] },
+  },
+  {
+    id: "calcify",
+    name: "Calcify",
+    character: "necrobinder",
+    type: "power",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    // Osty's attacks deal additional damage.
+    effects: [{ kind: "applyPower", power: "calcify", amount: 4, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "calcify", amount: 6, to: "self" }] },
   },
   {
     id: "reaper_form",

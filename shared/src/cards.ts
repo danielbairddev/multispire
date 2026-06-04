@@ -127,8 +127,9 @@ export type Effect =
   // --- Necrobinder: Osty (a summon) & Doom ---
   // Summon Osty with `amount` Max HP, or raise his Max HP by `amount` if he exists.
   | { kind: "summon"; amount: number }
-  // Osty strikes for `amount` (+ `perOstyMaxHp` × Osty's Max HP, e.g. Unleash).
-  | { kind: "ostyDamage"; amount: number; perOstyMaxHp?: number }
+  // Osty strikes for `amount` plus `perOstyMaxHp` × Osty's Max HP and
+  // `perOstyCurrentHp` × Osty's current HP (Unleash adds his current HP).
+  | { kind: "ostyDamage"; amount: number; perOstyMaxHp?: number; perOstyCurrentHp?: number }
   // Osty dies; gain Block equal to `blockPerMaxHp` × Osty's Max HP (e.g. Sacrifice).
   | { kind: "sacrificeOsty"; blockPerMaxHp: number }
   // Heal Osty by `amount` (up to his Max HP), e.g. Spur.
@@ -382,6 +383,8 @@ export type PowerId =
   | "haunt"
   // Reaper Form (Necrobinder): your Attacks also apply Doom equal to their damage.
   | "reaper_form"
+  // Calcify (Necrobinder): Osty's attacks deal this much additional damage.
+  | "calcify"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

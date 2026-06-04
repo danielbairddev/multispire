@@ -1462,4 +1462,24 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert(powerOf(g, "b", "doom") === 6, "Reaper Form applies Doom = attack damage (6), got " + powerOf(g, "b", "doom"));
 }
 
+// --- Unleash: Osty deals its damage plus Osty's current HP; Calcify adds more ---
+{
+  const g = new GameEngine("unleash", seededRng(10));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "bodyguard" }, { id: "calcify" }, { id: "unleash" }, { id: "strike_n" }, { id: "defend_n" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  play(g, "a", "bodyguard"); // Osty 5 HP
+  play(g, "a", "calcify"); // Osty attacks +4
+  const before = hpOf(g, "b");
+  play(g, "a", "unleash", "b"); // 6 + current HP 5 + Calcify 4 = 15
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 15, "Unleash deals 6 + Osty HP(5) + Calcify(4) = 15, got " + (before - hpOf(g, "b")));
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);
