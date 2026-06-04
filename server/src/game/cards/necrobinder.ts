@@ -369,4 +369,80 @@ export const NECROBINDER_CARDS: CardDef[] = [
     effects: [{ kind: "applyPower", power: "spirit_of_ash", amount: 4, to: "self" }],
     upgrade: { effects: [{ kind: "applyPower", power: "spirit_of_ash", amount: 5, to: "self" }] },
   },
+  {
+    id: "wisp",
+    name: "Wisp",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "common",
+    cost: 0,
+    target: "self",
+    retain: true,
+    exhaust: true,
+    effects: [{ kind: "gainEnergy", amount: 1 }],
+    upgrade: { effects: [{ kind: "gainEnergy", amount: 1 }] },
+  },
+  {
+    id: "pull_aggro",
+    name: "Pull Aggro",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "common",
+    cost: 2,
+    target: "self",
+    effects: [
+      { kind: "summon", amount: 4 },
+      { kind: "block", amount: 7 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "summon", amount: 5 },
+        { kind: "block", amount: 9 },
+      ],
+    },
+  },
+  {
+    id: "sculpting_strike",
+    name: "Sculpting Strike",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    // StS2 also adds Ethereal to a card in hand; that rider is a later pass.
+    effects: [{ kind: "damage", amount: 9 }],
+    upgrade: { effects: [{ kind: "damage", amount: 12 }] },
+  },
+  {
+    id: "cleanse",
+    name: "Cleanse",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    // StS2 also exhausts a card from the draw pile; that rider is a later pass.
+    effects: [{ kind: "summon", amount: 3 }],
+    upgrade: { effects: [{ kind: "summon", amount: 5 }] },
+  },
+  {
+    id: "invoke",
+    name: "Invoke",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "self",
+    // StS2 delays the summon to next turn; modeled as an immediate Summon here.
+    effects: [
+      { kind: "summon", amount: 2 },
+      { kind: "nextTurnBonus", energy: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "summon", amount: 3 },
+        { kind: "nextTurnBonus", energy: 1 },
+      ],
+    },
+  },
 ];

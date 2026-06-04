@@ -452,6 +452,8 @@ export class GameEngine {
       for (const rid of p.relics) {
         const r = getRelic(rid);
         energy += r?.bonusEnergyPerTurn ?? 0;
+        // Bound Phylactery: summon Osty Max HP at the start of each turn.
+        if (r?.summonPerTurn) this.summonOsty(p, r.summonPerTurn);
         if (first) {
           energy += r?.bonusEnergyFirstTurn ?? 0;
           extraDraw += r?.bonusDrawFirstTurn ?? 0;
@@ -1485,19 +1487,9 @@ export class GameEngine {
         source.orbSlots += eff.amount;
         this.pushLog(`✦ ${source.name} gains ${eff.amount} Orb slot${eff.amount > 1 ? "s" : ""}.`);
         break;
-      case "summon": {
-        source.usesOsty = true;
-        if (source.ostyMaxHp <= 0) {
-          source.ostyMaxHp = eff.amount;
-          source.ostyHp = eff.amount;
-          this.pushLog(`✦ ${source.name} summons Osty (${eff.amount} HP).`);
-        } else {
-          source.ostyMaxHp += eff.amount;
-          source.ostyHp += eff.amount;
-          this.pushLog(`✦ ${source.name}'s Osty grows by ${eff.amount} HP (now ${source.ostyHp}/${source.ostyMaxHp}).`);
-        }
+      case "summon":
+        this.summonOsty(source, eff.amount);
         break;
-      }
       case "ostyDamage": {
         // Osty strikes for a flat amount plus a fraction of his Max HP.
         const dmg = eff.amount + Math.floor((eff.perOstyMaxHp ?? 0) * source.ostyMaxHp);
@@ -1976,6 +1968,21 @@ export class GameEngine {
   }
 
   // ----------------------------------------------------------------- Defect orbs
+
+  // Summon Osty with `amount` Max HP, or raise his Max HP if he already exists.
+  private summonOsty(p: InternalPlayer, amount: number): void {
+    if (amount <= 0) return;
+    p.usesOsty = true;
+    if (p.ostyMaxHp <= 0) {
+      p.ostyMaxHp = amount;
+      p.ostyHp = amount;
+      this.pushLog(`✦ ${p.name} summons Osty (${amount} HP).`);
+    } else {
+      p.ostyMaxHp += amount;
+      p.ostyHp += amount;
+      this.pushLog(`✦ ${p.name}'s Osty grows by ${amount} HP (now ${p.ostyHp}/${p.ostyMaxHp}).`);
+    }
+  }
 
   private orbName(t: OrbType): string {
     return t === "lightning"

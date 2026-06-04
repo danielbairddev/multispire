@@ -47,6 +47,8 @@ export interface RelicHooks {
   strengthOnFirstStarSpend?: number;
   /** Block gained for every `perStarsSpent` Star Energy spent this combat (Galactic Dust). */
   blockPerStarsSpent?: { perStarsSpent: number; block: number };
+  /** Summon this much Osty Max HP at the start of each turn (Bound Phylactery). */
+  summonPerTurn?: number;
 }
 
 export const RELICS: Record<string, RelicHooks> = {
@@ -73,6 +75,12 @@ export const RELICS: Record<string, RelicHooks> = {
     name: "Ring of the Snake",
     description: "Silent starter. Draw 2 additional cards on your first turn.",
     bonusDrawFirstTurn: 2,
+  },
+  bound_phylactery: {
+    id: "bound_phylactery",
+    name: "Bound Phylactery",
+    description: "Necrobinder starter. At the start of each turn, Summon 1 (give Osty 1 Max HP).",
+    summonPerTurn: 1,
   },
 
   // ---- Regent relics ----
