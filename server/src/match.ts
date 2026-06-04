@@ -22,7 +22,7 @@ function defaultSeed(): MemberSeed {
   return { deck: ironcladDemoDeck(), relics: [], custom: false };
 }
 
-const MAX_PLAYERS: Record<MatchMode, number> = { "1v1": 2, ffa: 4 };
+const MAX_PLAYERS: Record<MatchMode, number> = { "1v1": 2, ffa: 4, yolo: 4 };
 
 export class Match {
   readonly id: string;
@@ -104,7 +104,7 @@ export class Match {
     if (starterId !== this.hostId) return "Only the host can start the match.";
     if (this.started) return "Already started.";
     if (this.members.length < 2) return "Need at least 2 players.";
-    const engine = new GameEngine(this.id);
+    const engine = new GameEngine(this.id, Math.random, { yoloPriority: this.mode === "yolo" });
     for (const m of this.members) {
       engine.addPlayer({
         id: m.id,

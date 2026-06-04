@@ -1328,4 +1328,31 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert(before - hpOf(g, "b") === 6, "Osty's Poke dealt 6, got " + (before - hpOf(g, "b")));
 }
 
+// --- YOLO priority: play all your cards freely, then End Turn to resolve ---
+{
+  const g = new GameEngine("yolo", seededRng(1), { yoloPriority: true });
+  g.addPlayer({ id: "a", name: "A", deck: Array.from({ length: 5 }, () => ({ id: "strike_r" })), maxHp: 100 });
+  g.addPlayer({ id: "b", name: "B", deck: Array.from({ length: 5 }, () => ({ id: "strike_r" })), maxHp: 100 });
+  g.start();
+  assert(g.viewFor("a").yoloPriority === true, "view reports YOLO mode");
+  assert(g.viewFor("a").priorityId === null, "no single priority holder in YOLO");
+  const before = hpOf(g, "b");
+  // A plays 3 Strikes back-to-back without any priority hand-off.
+  assert(play(g, "a", "strike_r", "b") === null, "A Strike 1");
+  assert(play(g, "a", "strike_r", "b") === null, "A Strike 2 (no priority wait)");
+  assert(play(g, "a", "strike_r", "b") === null, "A Strike 3");
+  assert(play(g, "a", "strike_r", "b") === "Not enough energy.", "A is out of energy");
+  // B acts concurrently (no waiting for A).
+  assert(play(g, "b", "strike_r", "a") === null, "B plays concurrently");
+  // Ending the turn locks A out; the turn resolves once everyone has ended.
+  assert(g.pass("a") === null, "A ends turn");
+  assert(play(g, "a", "strike_r", "b") === "You've ended your turn.", "A can't play after ending");
+  assert(g.phase === "action", "still action until everyone ends");
+  assert(g.pass("b") === null, "B ends turn");
+  assert(g.phase === "resolution", "resolves once all players have ended");
+  g.acknowledgeResolution("a");
+  g.acknowledgeResolution("b");
+  assert(before - hpOf(g, "b") === 18, "A's 3 Strikes dealt 18 to B, got " + (before - hpOf(g, "b")));
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

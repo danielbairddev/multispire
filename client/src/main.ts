@@ -222,8 +222,11 @@ function onMessage(msg: ServerMessage): void {
     case "state": {
       ui.game = msg.view;
       ui.screen = "game";
-      // Chime only on the transition into having priority (not on every update).
-      const minePriority = msg.view.priorityId === msg.view.youId && msg.view.phase === "action";
+      // Chime only on the transition into being able to act (not on every update).
+      const me = msg.view.players.find((p) => p.id === msg.view.youId);
+      const minePriority =
+        msg.view.phase === "action" &&
+        (msg.view.yoloPriority ? !!me && !me.passed : msg.view.priorityId === msg.view.youId);
       if (minePriority && !hadPriority) playPriorityChime();
       hadPriority = minePriority;
       break;
@@ -619,6 +622,7 @@ function renderJoin(): void {
           <select id="mode">
             <option value="1v1">1v1</option>
             <option value="ffa">Free for all</option>
+            <option value="yolo">YOLO priority</option>
           </select>
         </label>
 
@@ -1128,7 +1132,9 @@ function renderGame(): void {
   const g = ui.game!;
   const me = g.players.find((p) => p.id === g.youId)!;
   const enemies = g.players.filter((p) => p.id !== g.youId);
-  const yourPriority = g.priorityId === g.youId && g.phase === "action";
+  // In YOLO mode there's no priority hand-off: you may act until you End Turn.
+  const yourPriority =
+    g.phase === "action" && (g.yoloPriority ? !me.passed : g.priorityId === g.youId);
 
   const board = el(`<div class="board"></div>`);
 
@@ -1138,6 +1144,13 @@ function renderGame(): void {
     banner = g.winnerId === g.youId ? "🏆 You win!" : g.winnerId ? `${nameOf(g, g.winnerId)} wins` : "Game over";
   } else if (g.phase === "resolution") {
     banner = "Resolving…";
+  } else if (g.yoloPriority) {
+    const waiting = g.players.filter((p) => p.alive && !p.passed).map((p) => p.name);
+    banner = me.passed
+      ? `Turn locked — waiting on ${waiting.join(", ") || "resolution"}…`
+      : ui.targetingCardUid
+        ? "Pick a target"
+        : "YOLO — play your cards, then End Turn";
   } else if (yourPriority) {
     banner = ui.targetingCardUid ? "Pick a target" : "Your priority";
   } else {
@@ -1546,11 +1559,13 @@ function dock(me: PlayerView, yourPriority: boolean): HTMLElement {
   panel.appendChild(hand);
 
   const controls = el(`<div class="controls"></div>`);
-  const passBtn = el(
-    `<button class="primary" ${yourPriority ? "" : "disabled"}>${
-      hasAnyPlay(me) ? "Pass priority" : "Pass (nothing to play)"
-    }</button>`,
-  );
+  const yolo = ui.game?.yoloPriority;
+  const passLabel = yolo
+    ? "🔒 End turn"
+    : hasAnyPlay(me)
+      ? "Pass priority"
+      : "Pass (nothing to play)";
+  const passBtn = el(`<button class="primary" ${yourPriority ? "" : "disabled"}>${passLabel}</button>`);
   passBtn.addEventListener("click", pass);
   controls.appendChild(passBtn);
   controls.appendChild(

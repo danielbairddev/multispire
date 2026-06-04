@@ -194,6 +194,9 @@ export interface PlayerSeed {
 
 export class GameEngine {
   readonly matchId: string;
+  // YOLO priority: everyone plays all their cards freely (no priority passing),
+  // then locks in with End Turn; the turn resolves once all living players end.
+  readonly yoloPriority: boolean;
   phase: GameView["phase"] = "lobby";
   turn = 0;
   priorityId: string | null = null;
@@ -229,9 +232,10 @@ export class GameEngine {
   private pendingChoice: PendingChoice | null = null;
   private rng: () => number;
 
-  constructor(matchId: string, rng: () => number = Math.random) {
+  constructor(matchId: string, rng: () => number = Math.random, opts: { yoloPriority?: boolean } = {}) {
     this.matchId = matchId;
     this.rng = rng;
+    this.yoloPriority = opts.yoloPriority ?? false;
   }
 
   // ----------------------------------------------------------------- setup
@@ -495,17 +499,26 @@ export class GameEngine {
     }
     // Poison (or Brutality) at the top of the turn may have been lethal.
     this.checkDeaths();
-    this.priorityId = this.startingPlayerId;
-    this.autoPassIfStuck();
+    if (this.yoloPriority) {
+      // Everyone acts at once; there's no single priority holder.
+      this.priorityId = null;
+    } else {
+      this.priorityId = this.startingPlayerId;
+      this.autoPassIfStuck();
+    }
   }
 
   /** A player plays a card. Returns null on success or an error string. */
   playCard(playerId: string, cardUid: string, targetId?: string): string | null {
     if (this.phase !== "action") return "Not in the action phase.";
     if (this.pendingChoice) return "Resolve the current card selection first.";
-    if (this.priorityId !== playerId) return "It is not your priority.";
     const p = this.players.get(playerId);
     if (!p || !p.alive) return "You are not in this match.";
+    if (this.yoloPriority) {
+      if (p.passed) return "You've ended your turn.";
+    } else if (this.priorityId !== playerId) {
+      return "It is not your priority.";
+    }
 
     const idx = p.hand.findIndex((c) => c.uid === cardUid);
     if (idx === -1) return "Card not in hand.";
@@ -617,6 +630,12 @@ export class GameEngine {
     const rage = p.powers.get("rage") ?? 0;
     if (def.type === "attack" && rage > 0) this.gainBlock(p, rage, "Rage");
 
+    // YOLO: playing never yields priority — you keep going until you End Turn.
+    if (this.yoloPriority) {
+      this.checkDeaths();
+      return;
+    }
+
     // A play resets the pass round for everyone.
     for (const q of this.players.values()) q.passed = false;
     p.passed = false;
@@ -642,8 +661,17 @@ export class GameEngine {
   pass(playerId: string): string | null {
     if (this.phase !== "action") return "Not in the action phase.";
     if (this.pendingChoice) return "Resolve the current card selection first.";
+    const p = this.players.get(playerId);
+    if (!p || !p.alive) return "You are not in this match.";
+    // YOLO: "pass" means "End Turn" — lock in. Resolve once everyone has ended.
+    if (this.yoloPriority) {
+      if (p.passed) return "You've already ended your turn.";
+      p.passed = true;
+      this.pushLog(`${p.name} ends their turn.`);
+      if (this.allPassed()) this.resolveTurn();
+      return null;
+    }
     if (this.priorityId !== playerId) return "It is not your priority.";
-    const p = this.players.get(playerId)!;
     p.passed = true;
     this.pushLog(`${p.name} passes.`);
     this.advancePriority(playerId);
@@ -2434,6 +2462,7 @@ export class GameEngine {
       turn: this.turn,
       youId: viewerId,
       priorityId: this.priorityId,
+      yoloPriority: this.yoloPriority,
       startingPlayerId: this.startingPlayerId,
       players,
       pendingAttacks,
@@ -2549,7 +2578,9 @@ export class GameEngine {
     const playable =
       inHand &&
       this.phase === "action" &&
-      this.priorityId === owner.id &&
+      // YOLO: you can play as long as you haven't ended your turn; otherwise it
+      // must be your priority.
+      (this.yoloPriority ? !owner.passed : this.priorityId === owner.id) &&
       !this.pendingChoice &&
       !def.unplayable &&
       def.cost !== -2 &&

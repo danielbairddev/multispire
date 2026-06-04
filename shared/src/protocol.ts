@@ -23,7 +23,7 @@ export type ClientMessage =
   | { t: "ackResolution" }
   | { t: "chat"; text: string };
 
-export type MatchMode = "1v1" | "ffa";
+export type MatchMode = "1v1" | "ffa" | "yolo";
 
 // ---------- Server -> Client ----------
 
@@ -245,8 +245,11 @@ export interface GameView {
   phase: Phase;
   turn: number;
   youId: string;
-  /** Whose priority it is to act right now. */
+  /** Whose priority it is to act right now. (Null in YOLO mode — everyone acts.) */
   priorityId: string | null;
+  /** YOLO priority: every player may play all their cards freely, then End Turn;
+   *  the turn resolves once all living players have ended. */
+  yoloPriority: boolean;
   startingPlayerId: string | null;
   players: PlayerView[];
   pendingAttacks: PendingAttackView[];
