@@ -100,6 +100,8 @@ interface InternalPlayer {
   hpLossCount: number;
   // Number of cards discarded this turn (Eviscerate discount).
   discardsThisTurn: number;
+  // Whether the owner has applied Doom this turn (Death's Door doubles its Block).
+  doomAppliedThisTurn: boolean;
   // --- Regent resources ---
   // Star Energy: a second resource that persists across turns within a combat.
   stars: number;
@@ -264,6 +266,7 @@ export class GameEngine {
       alive: true,
       hpLossCount: 0,
       discardsThisTurn: 0,
+      doomAppliedThisTurn: false,
       stars: 0,
       forge: 0,
       usesStars: seed.deck.some((spec) => resolveCard(spec.id, false)?.character === "regent"),
@@ -403,8 +406,15 @@ export class GameEngine {
       p.skillsThisTurn = 0;
       p.cardsPlayedThisTurn = 0;
       p.discardsThisTurn = 0;
+      p.doomAppliedThisTurn = false;
       p.starsGainedThisTurn = 0;
       p.spentStarsThisTurn = false;
+      // Focus Drain (Biased Cognition): lose Focus at the start of each turn.
+      const focusDrain = p.powers.get("focus_drain") ?? 0;
+      if (focusDrain > 0) {
+        p.powers.set("focus", (p.powers.get("focus") ?? 0) - focusDrain);
+        this.pushLog(`☠ ${p.name} loses ${focusDrain} Focus (Biased Cognition).`);
+      }
       if (p.nextTurnStars > 0) {
         this.gainStars(p, p.nextTurnStars);
         p.nextTurnStars = 0;
@@ -1367,8 +1377,9 @@ export class GameEngine {
             this.pushLog(`✦ ${r.name} gains ${eff.amount} ${pdef.name}.`);
           }
         }
-        // Shroud: gain Block whenever you apply Doom.
+        // Shroud: gain Block whenever you apply Doom; mark it for Death's Door.
         if (eff.power === "doom" && eff.amount > 0) {
+          source.doomAppliedThisTurn = true;
           const shroud = source.powers.get("shroud") ?? 0;
           if (shroud > 0) this.gainBlock(source, shroud, "Shroud");
         }
@@ -1530,6 +1541,42 @@ export class GameEngine {
         this.pushLog(`✦ ${source.name} upgrades all their cards.`);
         break;
       }
+      case "healOsty":
+        if (source.ostyMaxHp > 0) {
+          source.ostyHp = Math.min(source.ostyMaxHp, source.ostyHp + eff.amount);
+        }
+        break;
+      case "loseHpTarget": {
+        // Direct HP loss, ignoring Block (e.g. Capture Spirit).
+        for (const tid of targets) {
+          const t = this.players.get(tid);
+          if (!t) continue;
+          t.hp = Math.max(0, t.hp - eff.amount);
+          this.pushLog(`☠ ${t.name} loses ${eff.amount} HP.`);
+        }
+        this.checkDeaths();
+        break;
+      }
+      case "exhaustFromDraw": {
+        for (let i = 0; i < eff.amount && source.draw.length > 0; i++) {
+          const c = source.draw.pop()!;
+          this.exhaustCard(source, c);
+        }
+        break;
+      }
+      case "triggerDarkPassive": {
+        const focus = source.powers.get("focus") ?? 0;
+        const times = eff.times ?? 1;
+        for (const orb of source.orbs) {
+          if (orb.type === "dark") orb.amount += Math.max(0, 6 + focus) * times;
+        }
+        break;
+      }
+      case "ifDoomAppliedThisTurn":
+        if (source.doomAppliedThisTurn) {
+          for (const sub of eff.then) this.applyEffect(sub, source, targets, def, instUid);
+        }
+        break;
       case "sacrificeOsty": {
         if (source.ostyMaxHp > 0) {
           const block = Math.floor(eff.blockPerMaxHp * source.ostyMaxHp);
@@ -2866,6 +2913,23 @@ export function describeCard(def: CardDef): string {
       case "sacrificeOsty":
         parts.push(`Osty dies; gain Block equal to ${e.blockPerMaxHp}× his Max HP`);
         break;
+      case "healOsty":
+        parts.push(`Heal Osty ${e.amount}`);
+        break;
+      case "loseHpTarget":
+        parts.push(`Target loses ${e.amount} HP`);
+        break;
+      case "exhaustFromDraw":
+        parts.push(`Exhaust ${e.amount} card${e.amount > 1 ? "s" : ""} from your draw pile`);
+        break;
+      case "triggerDarkPassive":
+        parts.push(`Trigger the passive of all Dark orbs${(e.times ?? 1) > 1 ? ` ${e.times} times` : ""}`);
+        break;
+      case "ifDoomAppliedThisTurn": {
+        const inner = e.then.map((sub) => describeCard({ effects: [sub] } as CardDef)).join(" ").replace(/\.$/, "");
+        parts.push(`If you applied Doom this turn: ${inner}`);
+        break;
+      }
       case "upgradeAllCards":
         parts.push("Upgrade all your cards for the rest of combat");
         break;

@@ -1403,4 +1403,25 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert(powerOf(g, "b", "doom") === 46, "No Escape scales (26 + 10 + 5×2 = 46), got " + powerOf(g, "b", "doom"));
 }
 
+// --- Death's Door: Block is doubled if you applied Doom this turn ---
+{
+  const g = new GameEngine("dd", seededRng(7));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "deaths_door" }, { id: "blight_strike" }, { id: "deaths_door" }, { id: "strike_n" }, { id: "defend_n" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  const b0 = blockOf(g, "a") ?? 0;
+  play(g, "a", "deaths_door"); // no Doom yet -> 6
+  assert((blockOf(g, "a") ?? 0) - b0 === 6, "Death's Door gives 6 Block without Doom");
+  play(g, "a", "blight_strike", "b"); // applies Doom
+  const b1 = blockOf(g, "a") ?? 0;
+  play(g, "a", "deaths_door"); // doubled -> 12
+  assert((blockOf(g, "a") ?? 0) - b1 === 12, "Death's Door doubles to 12 after Doom, got " + ((blockOf(g, "a") ?? 0) - b1));
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

@@ -115,6 +115,8 @@ export const POWERS: Record<string, PowerDef> = {
   shroud: { id: "shroud", name: "Shroud", kind: "buff" },
   // Spirit of Ash (Necrobinder): gain Block whenever you play an Ethereal card.
   spirit_of_ash: { id: "spirit_of_ash", name: "Spirit of Ash", kind: "buff" },
+  // Focus Drain (Biased Cognition): lose this much Focus at the start of each turn.
+  focus_drain: { id: "focus_drain", name: "Focus Drain", kind: "debuff" },
 };
 
 export function getPower(id: PowerId): PowerDef {

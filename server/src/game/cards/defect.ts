@@ -261,6 +261,48 @@ export const DEFECT_CARDS: CardDef[] = [
     },
   },
 
+  {
+    id: "hologram",
+    name: "Hologram",
+    character: "defect",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "self",
+    exhaust: true,
+    // Gain Block and put a card from your discard pile back on top of your draw.
+    effects: [
+      { kind: "block", amount: 3 },
+      { kind: "putDiscardOnDraw", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 5 },
+        { kind: "putDiscardOnDraw", amount: 1 },
+      ],
+    },
+  },
+  {
+    id: "ftl",
+    name: "FTL",
+    character: "defect",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 0,
+    target: "enemy",
+    // StS2 only draws if you've played few cards; modeled as an unconditional draw.
+    effects: [
+      { kind: "damage", amount: 5 },
+      { kind: "draw", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 6 },
+        { kind: "draw", amount: 1 },
+      ],
+    },
+  },
+
   // ---- Uncommons ----
   {
     id: "bulk_up",
@@ -316,9 +358,17 @@ export const DEFECT_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "self",
-    // StS2 also triggers the passive of all Dark orbs; that rider isn't modeled yet.
-    effects: [{ kind: "channelOrb", orb: "dark" }],
-    upgrade: { effects: [{ kind: "channelOrb", orb: "dark" }] },
+    // Channel a Dark orb, then trigger every Dark orb's passive (twice upgraded).
+    effects: [
+      { kind: "channelOrb", orb: "dark" },
+      { kind: "triggerDarkPassive", times: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "channelOrb", orb: "dark" },
+        { kind: "triggerDarkPassive", times: 2 },
+      ],
+    },
   },
   {
     id: "double_energy",
@@ -626,9 +676,17 @@ export const DEFECT_CARDS: CardDef[] = [
     rarity: "rare",
     cost: 1,
     target: "self",
-    // StS2 also loses 1 Focus at the start of each turn; that downside isn't modeled yet.
-    effects: [{ kind: "applyPower", power: "focus", amount: 4, to: "self" }],
-    upgrade: { effects: [{ kind: "applyPower", power: "focus", amount: 5, to: "self" }] },
+    // Gain Focus, but lose 1 Focus at the start of each turn thereafter.
+    effects: [
+      { kind: "applyPower", power: "focus", amount: 4, to: "self" },
+      { kind: "applyPower", power: "focus_drain", amount: 1, to: "self" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "applyPower", power: "focus", amount: 5, to: "self" },
+        { kind: "applyPower", power: "focus_drain", amount: 1, to: "self" },
+      ],
+    },
   },
   {
     id: "quadcast",

@@ -329,9 +329,16 @@ export const NECROBINDER_CARDS: CardDef[] = [
     cost: 1,
     target: "self",
     retain: true,
-    // StS2 also heals Osty; the heal rider is a later pass.
-    effects: [{ kind: "summon", amount: 3 }],
-    upgrade: { effects: [{ kind: "summon", amount: 5 }] },
+    effects: [
+      { kind: "summon", amount: 3 },
+      { kind: "healOsty", amount: 5 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "summon", amount: 5 },
+        { kind: "healOsty", amount: 7 },
+      ],
+    },
   },
   {
     id: "debilitate",
@@ -428,9 +435,16 @@ export const NECROBINDER_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "self",
-    // StS2 also exhausts a card from the draw pile; that rider is a later pass.
-    effects: [{ kind: "summon", amount: 3 }],
-    upgrade: { effects: [{ kind: "summon", amount: 5 }] },
+    effects: [
+      { kind: "summon", amount: 3 },
+      { kind: "exhaustFromDraw", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "summon", amount: 5 },
+        { kind: "exhaustFromDraw", amount: 1 },
+      ],
+    },
   },
   {
     id: "invoke",
@@ -477,6 +491,37 @@ export const NECROBINDER_CARDS: CardDef[] = [
     // StS2 gives every player Souls; in a duel you add them to your own hand.
     effects: [{ kind: "addCardToPile", cardId: "soul", amount: 3, pile: "hand" }],
     upgrade: { effects: [{ kind: "addCardToPile", cardId: "soul", amount: 4, pile: "hand" }] },
+  },
+  {
+    id: "reave",
+    name: "Reave",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 9 },
+      { kind: "addCardToPile", cardId: "soul", amount: 1, pile: "hand" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 11 },
+        { kind: "addCardToPile", cardId: "soul", amount: 1, pile: "hand" },
+      ],
+    },
+  },
+  {
+    id: "afterlife",
+    name: "Afterlife",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "common",
+    cost: 1,
+    target: "self",
+    exhaust: true,
+    effects: [{ kind: "summon", amount: 6 }],
+    upgrade: { effects: [{ kind: "summon", amount: 9 }] },
   },
   {
     id: "oblivion",
@@ -531,9 +576,17 @@ export const NECROBINDER_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "self",
-    // StS2 doubles the Block if you applied Doom this turn; rider is a later pass.
-    effects: [{ kind: "block", amount: 6 }],
-    upgrade: { effects: [{ kind: "block", amount: 7 }] },
+    // Doubled if you applied Doom this turn.
+    effects: [
+      { kind: "block", amount: 6 },
+      { kind: "ifDoomAppliedThisTurn", then: [{ kind: "block", amount: 6 }] },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 7 },
+        { kind: "ifDoomAppliedThisTurn", then: [{ kind: "block", amount: 7 }] },
+      ],
+    },
   },
   {
     id: "enfeebling_touch",
@@ -566,14 +619,14 @@ export const NECROBINDER_CARDS: CardDef[] = [
     rarity: "uncommon",
     cost: 1,
     target: "enemy",
-    // StS2 makes the enemy lose HP directly; approximated as damage here.
+    // The enemy loses HP directly (ignores Block); you gain Souls.
     effects: [
-      { kind: "damage", amount: 3 },
+      { kind: "loseHpTarget", amount: 3 },
       { kind: "addCardToPile", cardId: "soul", amount: 3, pile: "hand" },
     ],
     upgrade: {
       effects: [
-        { kind: "damage", amount: 4 },
+        { kind: "loseHpTarget", amount: 4 },
         { kind: "addCardToPile", cardId: "soul", amount: 4, pile: "hand" },
       ],
     },

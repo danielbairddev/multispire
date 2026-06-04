@@ -129,6 +129,16 @@ export type Effect =
   | { kind: "ostyDamage"; amount: number; perOstyMaxHp?: number }
   // Osty dies; gain Block equal to `blockPerMaxHp` × Osty's Max HP (e.g. Sacrifice).
   | { kind: "sacrificeOsty"; blockPerMaxHp: number }
+  // Heal Osty by `amount` (up to his Max HP), e.g. Spur.
+  | { kind: "healOsty"; amount: number }
+  // The target(s) lose `amount` HP directly (ignores Block), e.g. Capture Spirit.
+  | { kind: "loseHpTarget"; amount: number }
+  // Exhaust `amount` card(s) from the top of your draw pile, e.g. Cleanse.
+  | { kind: "exhaustFromDraw"; amount: number }
+  // Trigger the end-of-turn passive of all your Dark orbs `times`, e.g. Darkness.
+  | { kind: "triggerDarkPassive"; times?: number }
+  // Run `then` only if you've applied Doom this turn (e.g. Death's Door doubles its Block).
+  | { kind: "ifDoomAppliedThisTurn"; then: Effect[] }
   // Upgrade every card in your hand, draw, and discard piles for the rest of the
   // combat (e.g. Apotheosis).
   | { kind: "upgradeAllCards" }
@@ -358,6 +368,8 @@ export type PowerId =
   | "shroud"
   // Spirit of Ash (Necrobinder): gain this much Block whenever you play an Ethereal card.
   | "spirit_of_ash"
+  // Focus Drain (Biased Cognition): lose this much Focus at the start of each turn.
+  | "focus_drain"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {
