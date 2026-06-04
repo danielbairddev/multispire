@@ -203,6 +203,8 @@ const CARD_ALIASES: Record<string, string> = {
   gravewarden: "grave_warden",
   noescape: "no_escape",
   endofdays: "end_of_days",
+  spiritofash: "spirit_of_ash",
+  ascendersbane: "ascenders_bane",
 };
 
 /**

@@ -592,6 +592,11 @@ export class GameEngine {
     // After Image: gain Block whenever you play a card.
     const afterImage = p.powers.get("after_image") ?? 0;
     if (afterImage > 0) this.gainBlock(p, afterImage, "After Image");
+    // Spirit of Ash: gain Block whenever you play an Ethereal card.
+    if (def.ethereal) {
+      const ash = p.powers.get("spirit_of_ash") ?? 0;
+      if (ash > 0) this.gainBlock(p, ash, "Spirit of Ash");
+    }
     // A Thousand Cuts: deal damage to all enemies whenever you play a card.
     const cuts = p.powers.get("thousand_cuts") ?? 0;
     if (cuts > 0) {
@@ -1360,6 +1365,11 @@ export class GameEngine {
             this.pushLog(`✦ ${r.name} gains ${eff.amount} ${pdef.name}.`);
           }
         }
+        // Shroud: gain Block whenever you apply Doom.
+        if (eff.power === "doom" && eff.amount > 0) {
+          const shroud = source.powers.get("shroud") ?? 0;
+          if (shroud > 0) this.gainBlock(source, shroud, "Shroud");
+        }
         break;
       }
       case "draw":
@@ -1503,6 +1513,14 @@ export class GameEngine {
             times: 1,
           });
         }
+        break;
+      }
+      case "upgradeAllCards": {
+        // Apotheosis: upgrade every card across hand, draw, and discard piles.
+        for (const pile of [source.hand, source.draw, source.discard]) {
+          for (const c of pile) c.upgraded = true;
+        }
+        this.pushLog(`✦ ${source.name} upgrades all their cards.`);
         break;
       }
       case "sacrificeOsty": {
@@ -2825,6 +2843,9 @@ export function describeCard(def: CardDef): string {
         break;
       case "sacrificeOsty":
         parts.push(`Osty dies; gain Block equal to ${e.blockPerMaxHp}× his Max HP`);
+        break;
+      case "upgradeAllCards":
+        parts.push("Upgrade all your cards for the rest of combat");
         break;
       case "unimplemented":
         parts.push("(unimplemented)");

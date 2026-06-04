@@ -111,6 +111,10 @@ export const POWERS: Record<string, PowerDef> = {
   plating: { id: "plating", name: "Plating", kind: "buff" },
   // Doom (Necrobinder): at end of turn, if Doom >= the target's HP, it dies.
   doom: { id: "doom", name: "Doom", kind: "debuff" },
+  // Shroud (Necrobinder): gain Block whenever you apply Doom.
+  shroud: { id: "shroud", name: "Shroud", kind: "buff" },
+  // Spirit of Ash (Necrobinder): gain Block whenever you play an Ethereal card.
+  spirit_of_ash: { id: "spirit_of_ash", name: "Spirit of Ash", kind: "buff" },
 };
 
 export function getPower(id: PowerId): PowerDef {

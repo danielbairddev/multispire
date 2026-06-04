@@ -129,6 +129,9 @@ export type Effect =
   | { kind: "ostyDamage"; amount: number; perOstyMaxHp?: number }
   // Osty dies; gain Block equal to `blockPerMaxHp` × Osty's Max HP (e.g. Sacrifice).
   | { kind: "sacrificeOsty"; blockPerMaxHp: number }
+  // Upgrade every card in your hand, draw, and discard piles for the rest of the
+  // combat (e.g. Apotheosis).
+  | { kind: "upgradeAllCards" }
   // Add copies of `cardId` to hand until the hand is full (e.g. Crash Landing's
   // "Fill your hand with Debris").
   | { kind: "fillHandWith"; cardId: string }
@@ -347,6 +350,10 @@ export type PowerId =
   | "plating"
   // Necrobinder Doom: at end of turn, if Doom >= the target's HP, it dies (ignores Block).
   | "doom"
+  // Shroud (Necrobinder): gain this much Block whenever you apply Doom.
+  | "shroud"
+  // Spirit of Ash (Necrobinder): gain this much Block whenever you play an Ethereal card.
+  | "spirit_of_ash"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

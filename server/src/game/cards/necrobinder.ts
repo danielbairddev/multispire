@@ -293,4 +293,80 @@ export const NECROBINDER_CARDS: CardDef[] = [
     effects: [{ kind: "applyPower", power: "doom", amount: 29, to: "enemy" }],
     upgrade: { effects: [{ kind: "applyPower", power: "doom", amount: 37, to: "enemy" }] },
   },
+  {
+    id: "graveblast",
+    name: "Graveblast",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    // Deal damage and retrieve a card from your discard pile (to the top of draw).
+    effects: [
+      { kind: "damage", amount: 4 },
+      { kind: "putDiscardOnDraw", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 6 },
+        { kind: "putDiscardOnDraw", amount: 1 },
+      ],
+    },
+  },
+  {
+    id: "spur",
+    name: "Spur",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    retain: true,
+    // StS2 also heals Osty; the heal rider is a later pass.
+    effects: [{ kind: "summon", amount: 3 }],
+    upgrade: { effects: [{ kind: "summon", amount: 5 }] },
+  },
+  {
+    id: "debilitate",
+    name: "Debilitate",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    // StS2: debuffs are twice as effective on the target; approximated here as a
+    // Vulnerable application alongside the hit.
+    effects: [
+      { kind: "damage", amount: 10 },
+      { kind: "applyPower", power: "vulnerable", amount: 2, to: "enemy" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 12 },
+        { kind: "applyPower", power: "vulnerable", amount: 3, to: "enemy" },
+      ],
+    },
+  },
+  {
+    id: "shroud",
+    name: "Shroud",
+    character: "necrobinder",
+    type: "power",
+    rarity: "uncommon",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "applyPower", power: "shroud", amount: 2, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "shroud", amount: 3, to: "self" }] },
+  },
+  {
+    id: "spirit_of_ash",
+    name: "Spirit of Ash",
+    character: "necrobinder",
+    type: "power",
+    rarity: "rare",
+    cost: 1,
+    target: "self",
+    effects: [{ kind: "applyPower", power: "spirit_of_ash", amount: 4, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "spirit_of_ash", amount: 5, to: "self" }] },
+  },
 ];

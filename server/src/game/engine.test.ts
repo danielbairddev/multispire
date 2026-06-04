@@ -1,6 +1,7 @@
 // Lightweight assertions runnable with `npm test`. No framework — just throws.
 import { GameEngine } from "./engine.js";
 import { ironcladStarterDeck, ironcladDemoDeck } from "./decks.js";
+import { resolveCard } from "./cards/registry.js";
 
 let passed = 0;
 function assert(cond: boolean, msg: string): void {
@@ -1353,6 +1354,27 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   g.acknowledgeResolution("a");
   g.acknowledgeResolution("b");
   assert(before - hpOf(g, "b") === 18, "A's 3 Strikes dealt 18 to B, got " + (before - hpOf(g, "b")));
+}
+
+// --- Shroud: gain Block whenever you apply Doom; plus the new ids resolve ---
+{
+  const g = new GameEngine("shroud", seededRng(2));
+  g.addPlayer({ id: "a", name: "A", deck: [{ id: "shroud" }, { id: "blight_strike" }, { id: "scourge" }], maxHp: 200 });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  assert(play(g, "a", "shroud") === null, "Shroud plays");
+  assert(powerOf(g, "a", "shroud") === 2, "Shroud power applied");
+  const blockBefore = blockOf(g, "a") ?? 0;
+  assert(play(g, "a", "scourge", "b") === null, "Scourge applies Doom");
+  assert((blockOf(g, "a") ?? 0) - blockBefore === 2, "Shroud gives 2 Block when Doom is applied");
+}
+
+// Previously-"unknown" ids are now real cards (not registry placeholders).
+{
+  for (const id of ["debilitate", "shroud", "spirit_of_ash", "spur", "graveblast", "apotheosis", "ascenders_bane"]) {
+    assert(resolveCard(id, false) != null, `card id "${id}" resolves`);
+  }
 }
 
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);
