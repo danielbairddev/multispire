@@ -131,9 +131,16 @@ export const NECROBINDER_CARDS: CardDef[] = [
     rarity: "common",
     cost: 1,
     target: "self",
-    // StS2 also adds a Soul; Soul cards are a later pass.
-    effects: [{ kind: "block", amount: 8 }],
-    upgrade: { effects: [{ kind: "block", amount: 11 }] },
+    effects: [
+      { kind: "block", amount: 8 },
+      { kind: "addCardToPile", cardId: "soul", amount: 1, pile: "hand" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 11 },
+        { kind: "addCardToPile", cardId: "soul", amount: 1, pile: "hand" },
+      ],
+    },
   },
   {
     id: "defile",
@@ -444,5 +451,31 @@ export const NECROBINDER_CARDS: CardDef[] = [
         { kind: "nextTurnBonus", energy: 1 },
       ],
     },
+  },
+  {
+    id: "seance",
+    name: "Seance",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "rare",
+    cost: 1,
+    target: "self",
+    ethereal: true,
+    // Transform a card in your draw pile into a Soul.
+    effects: [{ kind: "transformDraw", into: "soul", amount: 1 }],
+    upgrade: { effects: [{ kind: "transformDraw", into: "soul", amount: 1 }] },
+  },
+  {
+    id: "glimpse_beyond",
+    name: "Glimpse Beyond",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "rare",
+    cost: 1,
+    target: "self",
+    exhaust: true,
+    // StS2 gives every player Souls; in a duel you add them to your own hand.
+    effects: [{ kind: "addCardToPile", cardId: "soul", amount: 3, pile: "hand" }],
+    upgrade: { effects: [{ kind: "addCardToPile", cardId: "soul", amount: 4, pile: "hand" }] },
   },
 ];

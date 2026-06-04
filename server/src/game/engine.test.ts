@@ -1,7 +1,7 @@
 // Lightweight assertions runnable with `npm test`. No framework — just throws.
 import { GameEngine } from "./engine.js";
 import { ironcladStarterDeck, ironcladDemoDeck } from "./decks.js";
-import { resolveCard } from "./cards/registry.js";
+import { resolveCard, canonicalCardId } from "./cards/registry.js";
 
 let passed = 0;
 function assert(cond: boolean, msg: string): void {
@@ -1374,6 +1374,10 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
 {
   for (const id of ["debilitate", "shroud", "spirit_of_ash", "spur", "graveblast", "apotheosis", "ascenders_bane"]) {
     assert(resolveCard(id, false) != null, `card id "${id}" resolves`);
+  }
+  // Punctuation-insensitive id matching (apostrophes/commas/etc.).
+  for (const raw of ["Ascender's Bane", "ascenders_bane", "Decisions, Decisions", "GUARDS!!!", "Soul", "Seance"]) {
+    assert(resolveCard(canonicalCardId(raw), false) != null, `"${raw}" resolves to a card`);
   }
 }
 

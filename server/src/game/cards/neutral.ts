@@ -213,6 +213,19 @@ export const NEUTRAL_CARDS: CardDef[] = [
     upgrade: { cost: 1, effects: [{ kind: "upgradeAllCards" }] },
   },
   {
+    id: "soul",
+    name: "Soul",
+    character: "neutral",
+    type: "skill",
+    rarity: "special",
+    cost: 0,
+    target: "self",
+    token: true,
+    exhaust: true,
+    // Necrobinder token: drawn 2, then Exhausts (synergy cards react to it).
+    effects: [{ kind: "draw", amount: 2 }],
+  },
+  {
     id: "ascenders_bane",
     name: "Ascender's Bane",
     character: "neutral",

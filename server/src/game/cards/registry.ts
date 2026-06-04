@@ -32,6 +32,18 @@ export function isCardSupported(def: CardDef): boolean {
 
 const BY_ID = new Map<string, CardDef>(ALL.map((c) => [c.id, c]));
 
+// Punctuation-insensitive index: strip everything but [a-z0-9] from each card's
+// id AND its display name, so "Ascender's Bane", "ascenders_bane", "Decisions,
+// Decisions" all resolve without a hand-written alias. Built from ids first, then
+// names (ids win on collision).
+const strip = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+const BY_STRIPPED = new Map<string, string>();
+for (const c of ALL) BY_STRIPPED.set(strip(c.id), c.id);
+for (const c of ALL) {
+  const k = strip(c.name);
+  if (!BY_STRIPPED.has(k)) BY_STRIPPED.set(k, c.id);
+}
+
 // Aliases let importers use ids from other sources (e.g. CamelCase run exports)
 // without an exact match. Keys are compared after lowercasing + stripping
 // separators. Extend this as you map more real-world ids onto engine ids.
@@ -207,6 +219,7 @@ const CARD_ALIASES: Record<string, string> = {
   ascendersbane: "ascenders_bane",
   pullaggro: "pull_aggro",
   sculptingstrike: "sculpting_strike",
+  glimpsebeyond: "glimpse_beyond",
 };
 
 /**
@@ -219,8 +232,10 @@ export function canonicalCardId(raw: string): string {
   if (BY_ID.has(trimmed)) return trimmed;
   const lower = trimmed.toLowerCase();
   if (BY_ID.has(lower)) return lower;
-  const stripped = lower.replace(/[\s_-]+/g, "");
+  const stripped = strip(lower);
   if (CARD_ALIASES[stripped]) return CARD_ALIASES[stripped];
+  // Punctuation-insensitive match against every card id and display name.
+  if (BY_STRIPPED.has(stripped)) return BY_STRIPPED.get(stripped)!;
   return lower; // unknown; surfaced by getCard's missing-card logging
 }
 
