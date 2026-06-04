@@ -50,11 +50,13 @@ Flatten, Snap, Sic 'Em, Rattle, Right Hand Hand, High Five, Squeeze, Bone Shards
 Calcify, Fetch, Protector.
 
 **On-event power hooks (need new reactive triggers):**
-Countdown (turn-start Doom), Reaper Form (attacks apply Doom = damage), Necro
-Mastery (enemies lose HP when Osty does), Friendship, Haunt (Soul-play damage),
-Lethality (first-attack bonus), Sleight of Flesh (debuff-apply damage), Danse
-Macabre, Sentry Mode, Devour Life (Summon on Soul play), Pagestorm (draw on
-Ethereal draw), Spirit-of-Ash-like, Call of the Void, Demesne, Forbidden Grimoire.
+- ✅ DONE this pass: **Countdown** (turn-start Doom), **Reaper Form** (attacks
+  apply Doom = damage), **Devour Life** (Summon on Soul play), **Haunt** (Soul-play
+  damage).
+- ❌ still missing: Necro Mastery (enemies lose HP when Osty does), Friendship,
+  Lethality (first-attack bonus), Sleight of Flesh (debuff-apply damage), Danse
+  Macabre, Sentry Mode, Pagestorm (draw on Ethereal draw), Call of the Void,
+  Demesne, Forbidden Grimoire.
 
 **Doom/Soul/Ethereal payoffs:**
 - ✅ DONE this pass: **Soul Storm** (dmg + per Soul in exhaust), **Time's Up**

@@ -117,6 +117,14 @@ export const POWERS: Record<string, PowerDef> = {
   spirit_of_ash: { id: "spirit_of_ash", name: "Spirit of Ash", kind: "buff" },
   // Focus Drain (Biased Cognition): lose this much Focus at the start of each turn.
   focus_drain: { id: "focus_drain", name: "Focus Drain", kind: "debuff" },
+  // Countdown (Necrobinder): apply Doom to a random enemy at the start of each turn.
+  countdown: { id: "countdown", name: "Countdown", kind: "buff" },
+  // Devour Life (Necrobinder): Summon whenever you play a Soul.
+  devour_life: { id: "devour_life", name: "Devour Life", kind: "buff" },
+  // Haunt (Necrobinder): deal damage to a random enemy whenever you play a Soul.
+  haunt: { id: "haunt", name: "Haunt", kind: "buff" },
+  // Reaper Form (Necrobinder): your Attacks also apply Doom equal to their damage.
+  reaper_form: { id: "reaper_form", name: "Reaper Form", kind: "buff" },
 };
 
 export function getPower(id: PowerId): PowerDef {

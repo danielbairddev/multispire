@@ -1443,4 +1443,23 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert(before - hpOf(g, "b") === 13, "Time's Up deals damage equal to Doom (13), got " + (before - hpOf(g, "b")));
 }
 
+// --- Reaper Form: your Attacks also apply Doom equal to their damage ---
+{
+  const g = new GameEngine("reaper", seededRng(9));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "reaper_form" }, { id: "strike_n" }, { id: "strike_n" }, { id: "defend_n" }, { id: "bodyguard" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  assert(play(g, "a", "reaper_form") === null, "Reaper Form plays");
+  finishTurn(g); // next turn so we have energy for an attack
+  ensure(g, "a");
+  assert(play(g, "a", "strike_n", "b") === null, "Strike plays under Reaper Form");
+  assert(powerOf(g, "b", "doom") === 6, "Reaper Form applies Doom = attack damage (6), got " + powerOf(g, "b", "doom"));
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

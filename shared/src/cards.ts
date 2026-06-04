@@ -374,6 +374,14 @@ export type PowerId =
   | "spirit_of_ash"
   // Focus Drain (Biased Cognition): lose this much Focus at the start of each turn.
   | "focus_drain"
+  // Countdown (Necrobinder): apply this much Doom to a random enemy each turn start.
+  | "countdown"
+  // Devour Life (Necrobinder): Summon this much whenever you play a Soul.
+  | "devour_life"
+  // Haunt (Necrobinder): deal this much to a random enemy whenever you play a Soul.
+  | "haunt"
+  // Reaper Form (Necrobinder): your Attacks also apply Doom equal to their damage.
+  | "reaper_form"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

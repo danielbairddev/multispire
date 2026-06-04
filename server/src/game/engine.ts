@@ -388,6 +388,16 @@ export class GameEngine {
         }
         this.pushLog(`☠ ${p.name}'s Noxious Fumes applies ${fumes} Poison to all enemies.`);
       }
+      // Countdown: apply Doom to a random enemy at the start of your turn.
+      const countdown = p.powers.get("countdown") ?? 0;
+      if (countdown > 0) {
+        const enemies = this.aliveEnemies(p.id);
+        if (enemies.length > 0) {
+          const q = this.players.get(enemies[Math.floor(this.rng() * enemies.length)])!;
+          q.powers.set("doom", (q.powers.get("doom") ?? 0) + countdown);
+          this.pushLog(`☠ ${p.name}'s Countdown applies ${countdown} Doom to ${q.name}.`);
+        }
+      }
       // Clean up the leftover hand: Convergence retains everything once; otherwise
       // Retain keeps the card, Ethereal exhausts it, everything else discards.
       const leftover = p.hand;
@@ -608,6 +618,26 @@ export class GameEngine {
     if (def.ethereal) {
       const ash = p.powers.get("spirit_of_ash") ?? 0;
       if (ash > 0) this.gainBlock(p, ash, "Spirit of Ash");
+    }
+    // Necrobinder Soul-play reactions: Devour Life summons, Haunt strikes.
+    if (def.id === "soul") {
+      const devour = p.powers.get("devour_life") ?? 0;
+      if (devour > 0) this.summonOsty(p, devour);
+      const haunt = p.powers.get("haunt") ?? 0;
+      if (haunt > 0) this.orbDamageRandomEnemy(p, haunt, "Haunt");
+    }
+    // Reaper Form: your Attacks also apply Doom equal to their base damage.
+    const reaper = p.powers.get("reaper_form") ?? 0;
+    if (reaper > 0 && def.type === "attack") {
+      const dmg = def.effects.reduce(
+        (s, e) => s + (e.kind === "damage" ? e.amount * (e.times ?? 1) : 0),
+        0,
+      );
+      if (dmg > 0) {
+        for (const tid of targets) {
+          if (tid !== p.id) this.applyEffect({ kind: "applyPower", power: "doom", amount: dmg, to: "enemy" }, p, [tid], def, inst.uid);
+        }
+      }
     }
     // A Thousand Cuts: deal damage to all enemies whenever you play a card.
     const cuts = p.powers.get("thousand_cuts") ?? 0;
