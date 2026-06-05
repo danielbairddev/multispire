@@ -171,6 +171,10 @@ export type Effect =
   | { kind: "doubleHang" }
   // The next Ethereal card you play this turn costs 0 (e.g. Veilpiercer).
   | { kind: "nextEtherealFree" }
+  // Summon `amount` Osty Max HP, X times (X = energy spent on an X-cost card) — Dirge.
+  | { kind: "summonPerX"; amount: number }
+  // Add X copies of `cardId` to your hand (X = energy spent on an X-cost card) — Dirge.
+  | { kind: "addCardPerX"; cardId: string }
   // Interactive: choose `amount` (default 1) card(s) in your hand to make Ethereal
   // for the rest of the combat (e.g. Sculpting Strike). The engine pauses.
   | { kind: "makeEtherealChosen"; amount?: number }
@@ -219,7 +223,7 @@ export type Effect =
   // Interactive: choose a card in your hand and add `amount` copies of it to your
   // hand (e.g. Heirloom Hammer copies a chosen Colorless card). `colorlessOnly`
   // restricts the eligible pool to Colorless (neutral) cards. The engine pauses.
-  | { kind: "duplicateChosen"; amount: number; colorlessOnly?: boolean }
+  | { kind: "duplicateChosen"; amount: number; colorlessOnly?: boolean; toPile?: "hand" | "discard" }
   // Escape hatch: an effect we know exists but haven't modeled yet. Logged loudly.
   | { kind: "unimplemented"; note: string };
 
@@ -268,7 +272,7 @@ export interface CardDef {
    * each time its owner has lost HP this combat (e.g. Blood for Blood). "discards"
    * makes it cost 1 less for each card discarded this turn (e.g. Eviscerate).
    */
-  dynamicCost?: "hp_loss" | "discards" | "osty_attacked" | "ethereal_in_hand";
+  dynamicCost?: "hp_loss" | "discards" | "osty_attacked" | "ethereal_in_hand" | "deaths";
   /**
    * Permanently lowers this card instance's cost by this much every time it is
    * drawn this combat (e.g. Kingly Kick: −1 per draw). Tracked per card instance.

@@ -916,6 +916,59 @@ export const NECROBINDER_CARDS: CardDef[] = [
     },
   },
   {
+    id: "undeath",
+    name: "Undeath",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "rare",
+    cost: 0,
+    target: "self",
+    // Gain Block; add a copy of a card in your hand to your discard pile.
+    effects: [
+      { kind: "block", amount: 7 },
+      { kind: "duplicateChosen", amount: 1, toPile: "discard" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "block", amount: 9 },
+        { kind: "duplicateChosen", amount: 1, toPile: "discard" },
+      ],
+    },
+  },
+  {
+    id: "dirge",
+    name: "Dirge",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "uncommon",
+    cost: "X",
+    target: "self",
+    // Summon 3 (4) X times; add X Souls.
+    effects: [
+      { kind: "summonPerX", amount: 3 },
+      { kind: "addCardPerX", cardId: "soul" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "summonPerX", amount: 4 },
+        { kind: "addCardPerX", cardId: "soul" },
+      ],
+    },
+  },
+  {
+    id: "melancholy",
+    name: "Melancholy",
+    character: "necrobinder",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 3,
+    target: "self",
+    // Costs 1 less for each enemy that has died this combat.
+    dynamicCost: "deaths",
+    effects: [{ kind: "block", amount: 13 }],
+    upgrade: { effects: [{ kind: "block", amount: 17 }] },
+  },
+  {
     id: "hang",
     name: "Hang",
     character: "necrobinder",

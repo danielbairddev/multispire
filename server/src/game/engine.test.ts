@@ -1679,4 +1679,24 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert(handOf(g, "a").find((c) => c.id === "fear")!.cost === 1, "the next Ethereal costs normally again");
 }
 
+// --- Undeath: copy a chosen hand card into your discard pile ---
+{
+  const g = new GameEngine("undeath", seededRng(21));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "undeath" }, { id: "strike_n" }, { id: "defend_n" }, { id: "bodyguard" }, { id: "poke" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  assert(play(g, "a", "undeath") === null, "Undeath plays");
+  const target = handOf(g, "a").find((c) => c.id === "strike_n")!;
+  assert(g.resolveChoice("a", [target.uid]) === null, "choose the card to copy");
+  const dp = g.viewFor("a").players.find((p) => p.id === "a")!.discardPile ?? [];
+  assert(dp.filter((c) => c.id === "strike_n").length === 1, "a copy of the card is in the discard pile");
+  assert(handOf(g, "a").some((c) => c.uid === target.uid), "the original stays in hand");
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

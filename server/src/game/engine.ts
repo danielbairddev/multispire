@@ -193,8 +193,9 @@ interface PendingChoice {
   instUid?: string;
   // replaySkill only: how many times to play the chosen Skill.
   replayTimes?: number;
-  // duplicateChosen only: how many copies to add of the chosen card.
+  // duplicateChosen only: how many copies to add of the chosen card, and where.
   dupAmount?: number;
+  dupPile?: "hand" | "discard";
   // discover only: the generated options, and where the chosen card goes.
   options?: CardInstance[];
   discoverPile?: "draw" | "hand";
@@ -243,6 +244,8 @@ export class GameEngine {
   // overwritten). Outside that window, the loss applies to live Energy directly.
   private inTurnStartDraw = false;
   private turnStartEnergyLoss = 0;
+  // Total players that have died this combat (Melancholy cost reduction).
+  private deathsThisCombat = 0;
   // A card-selection the engine is paused on (Headbutt, Warcry, Burning Pact).
   // While set, no other play/pass is accepted until the chooser resolves it.
   private pendingChoice: PendingChoice | null = null;
@@ -760,6 +763,8 @@ export class GameEngine {
       const eth = p.hand.filter((c) => resolveCard(c.id, c.upgraded)?.ethereal || p.etherealUids.has(c.uid)).length;
       return Math.max(0, def.cost - 2 * eth - drawDown + costUp);
     }
+    // Melancholy: costs 1 less for each enemy that has died this combat.
+    if (def.dynamicCost === "deaths") return Math.max(0, def.cost - this.deathsThisCombat - drawDown + costUp);
     return Math.max(0, def.cost - drawDown + costUp);
   }
 
@@ -1111,6 +1116,7 @@ export class GameEngine {
               : eff.kind;
     const replayTimes = eff.kind === "replayChosenSkill" ? eff.times : undefined;
     const dupAmount = eff.kind === "duplicateChosen" ? eff.amount : undefined;
+    const dupPile = eff.kind === "duplicateChosen" ? eff.toPile : undefined;
     const sourcePile: "hand" | "discard" = kind === "putDiscardOnDraw" ? "discard" : "hand";
     // The eligible pool: replaySkill is limited to replayable Skills in hand;
     // duplicateChosen may be restricted to Colorless (neutral) cards.
@@ -1131,7 +1137,7 @@ export class GameEngine {
         : Math.min((eff as { amount?: number }).amount ?? 1, eligible.length);
     if (eligible.length <= pick) {
       // Forced selection of everything eligible; resolve immediately.
-      this.performChoice(kind, source, eligible.map((c) => c.uid), replayTimes, dupAmount);
+      this.performChoice(kind, source, eligible.map((c) => c.uid), replayTimes, dupAmount, dupPile);
       return false;
     }
     this.pendingChoice = {
@@ -1147,6 +1153,7 @@ export class GameEngine {
       instUid,
       replayTimes,
       dupAmount,
+      dupPile,
     };
     return true;
   }
@@ -1243,18 +1250,20 @@ export class GameEngine {
     uids: string[],
     replayTimes?: number,
     dupAmount?: number,
+    dupPile?: "hand" | "discard",
   ): void {
     if (kind === "duplicateChosen") {
-      // Copy the chosen card(s) into hand without removing the original.
+      // Copy the chosen card(s) into hand (or discard) without removing the original.
       const n = dupAmount ?? 1;
+      const dest = dupPile === "discard" ? source.discard : source.hand;
       for (const u of uids) {
         const orig = source.hand.find((c) => c.uid === u);
         if (!orig) continue;
         const d = resolveCard(orig.id, orig.upgraded);
         for (let i = 0; i < n; i++) {
-          source.hand.push({ uid: uid("c"), id: orig.id, upgraded: orig.upgraded });
+          dest.push({ uid: uid("c"), id: orig.id, upgraded: orig.upgraded });
         }
-        this.pushLog(`✦ ${source.name} copies ${d?.name ?? orig.id}${n > 1 ? ` ×${n}` : ""} into their hand.`);
+        this.pushLog(`✦ ${source.name} copies ${d?.name ?? orig.id}${n > 1 ? ` ×${n}` : ""} into their ${dupPile === "discard" ? "discard pile" : "hand"}.`);
       }
       return;
     }
@@ -1321,13 +1330,13 @@ export class GameEngine {
       pc.source === "discover" ? pc.options ?? [] : pc.source === "discard" ? pc.effSource.discard : pc.effSource.hand;
     const valid = [...new Set(uids)].filter((u) => candidatePool.some((c) => c.uid === u));
     if (valid.length !== pc.pick) return `Choose exactly ${pc.pick} card${pc.pick > 1 ? "s" : ""}.`;
-    const { kind, effSource, remaining, targets, def, instUid, replayTimes, dupAmount } = pc;
+    const { kind, effSource, remaining, targets, def, instUid, replayTimes, dupAmount, dupPile } = pc;
     this.pendingChoice = null;
     if (kind === "discover") {
       const picked = (pc.options ?? []).filter((c) => valid.includes(c.uid));
       this.discoverAdd(effSource, picked, pc.discoverPile ?? "hand");
     } else {
-      this.performChoice(kind, effSource, valid, replayTimes, dupAmount);
+      this.performChoice(kind, effSource, valid, replayTimes, dupAmount, dupPile);
     }
     // Continue the rest of the played card's effects (which may pause again).
     const paused = this.applyEffectList(remaining, effSource, targets, def, instUid);
@@ -1702,6 +1711,18 @@ export class GameEngine {
       case "summon":
         this.summonOsty(source, eff.amount);
         break;
+      case "summonPerX":
+        // Dirge: Summon `amount` X times, where X is the energy spent.
+        for (let i = 0; i < source.xThisPlay; i++) this.summonOsty(source, eff.amount);
+        break;
+      case "addCardPerX": {
+        // Dirge: add X copies of a card to your hand.
+        for (let i = 0; i < source.xThisPlay; i++) {
+          source.hand.push({ uid: uid("c"), id: eff.cardId, upgraded: false });
+        }
+        if (source.xThisPlay > 0) this.onCardCreated(source, source.xThisPlay);
+        break;
+      }
       case "ostyDamage": {
         // Osty strikes for a flat amount + fractions of his Max/current HP +
         // Calcify + a bonus per prior Osty attack this turn (Squeeze).
@@ -2713,6 +2734,7 @@ export class GameEngine {
         if (p.alive && p.hp <= 0) {
           p.alive = false;
           changed = true;
+          this.deathsThisCombat += 1; // Melancholy cost reduction
           this.pushLog(`${p.name} is defeated!`);
           // Corpse Explosion: on death, deal its Max HP (×stacks) to all enemies.
           const boom = p.powers.get("corpse_explosion") ?? 0;
@@ -3182,6 +3204,14 @@ export function describeCard(def: CardDef): string {
       case "summon":
         parts.push(`Summon ${e.amount} (give Osty ${e.amount} Max HP)`);
         break;
+      case "summonPerX":
+        parts.push(`Summon ${e.amount}, X times (X = Energy spent)`);
+        break;
+      case "addCardPerX": {
+        const name = resolveCard(e.cardId, false)?.name ?? e.cardId;
+        parts.push(`Add X ${name} to your hand (X = Energy spent)`);
+        break;
+      }
       case "ostyDamage": {
         let t = `Osty deals ${e.amount} damage`;
         if (e.perOstyCurrentHp) t += e.perOstyCurrentHp === 1 ? " plus his current HP" : ` plus ${e.perOstyCurrentHp}× his current HP`;
@@ -3236,6 +3266,7 @@ export function describeCard(def: CardDef): string {
   if (def.dynamicCost === "discards") text += ". Costs 1 less for each card discarded this turn";
   if (def.dynamicCost === "osty_attacked") text += ". Costs 0 if Osty attacked this turn";
   if (def.dynamicCost === "ethereal_in_hand") text += ". Costs 2 less for each Ethereal card in your hand";
+  if (def.dynamicCost === "deaths") text += ". Costs 1 less for each enemy that died this combat";
   if (def.costDownOnDraw)
     text += `. Costs ${def.costDownOnDraw} less each time you draw it this combat`;
   if (def.damageUpOnDraw)
