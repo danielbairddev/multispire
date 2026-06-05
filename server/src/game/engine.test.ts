@@ -1640,4 +1640,43 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert(handOf(g, "a").find((c) => c.id === "strike_n")!.cost === 2, "Borrowed Time makes Strike cost 2");
 }
 
+// --- Hang: damage scales with the enemy's Hang, then doubles it ---
+{
+  const g = new GameEngine("hang", seededRng(19));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "hang" }, { id: "hang" }, { id: "strike_n" }, { id: "defend_n" }, { id: "bodyguard" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  const before = hpOf(g, "b");
+  play(g, "a", "hang", "b"); // 10 × 1, Hang -> 2
+  play(g, "a", "hang", "b"); // 10 × 2 = 20, Hang -> 4
+  assert(powerOf(g, "b", "hang") === 4, "Hang doubled to 4");
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 30, "Hang: 10 + 20 = 30, got " + (before - hpOf(g, "b")));
+}
+
+// --- Veilpiercer: the next Ethereal card you play is free ---
+{
+  const g = new GameEngine("veil", seededRng(20));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "veilpiercer" }, { id: "defile" }, { id: "fear" }, { id: "strike_n" }, { id: "defend_n" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  assert(handOf(g, "a").find((c) => c.id === "defile")!.cost === 1, "Defile costs 1 normally");
+  play(g, "a", "veilpiercer", "b");
+  assert(handOf(g, "a").find((c) => c.id === "defile")!.cost === 0, "Veilpiercer makes the next Ethereal free");
+  play(g, "a", "defile", "b"); // consumes the free play
+  assert(handOf(g, "a").find((c) => c.id === "fear")!.cost === 1, "the next Ethereal costs normally again");
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

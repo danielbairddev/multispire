@@ -57,6 +57,9 @@ export type Effect =
       perCardDrawnThisTurn?: number;
       // Adds this much damage per Ethereal card played this turn (Pull from Below).
       perEtherealPlayedThisTurn?: number;
+      // Multiply this damage by the target's Hang multiplier (min 1), then double
+      // it (Hang). Used together so a Hang card scales then grows.
+      hangScaled?: boolean;
     }
   | { kind: "block"; amount: number }
   | { kind: "applyPower"; power: PowerId; amount: number; to: "enemy" | "self" }
@@ -164,6 +167,10 @@ export type Effect =
   // Exhaust your whole hand; if you exhausted at least `threshold` cards, gain
   // `intangible` Intangible (e.g. Eidolon).
   | { kind: "exhaustHandForIntangible"; threshold: number; intangible: number }
+  // Double the Hang multiplier on the target enemy (first application sets it to 2).
+  | { kind: "doubleHang" }
+  // The next Ethereal card you play this turn costs 0 (e.g. Veilpiercer).
+  | { kind: "nextEtherealFree" }
   // Interactive: choose `amount` (default 1) card(s) in your hand to make Ethereal
   // for the rest of the combat (e.g. Sculpting Strike). The engine pauses.
   | { kind: "makeEtherealChosen"; amount?: number }
@@ -430,6 +437,10 @@ export type PowerId =
   | "lethality"
   // Cost Up (Borrowed Time): your cards cost this much more; wears off each turn.
   | "cost_up"
+  // Hang (Necrobinder): Hang cards deal this many times more damage to this enemy.
+  | "hang"
+  // Call of the Void (Necrobinder): add a random Ethereal card to hand each turn.
+  | "call_of_the_void"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

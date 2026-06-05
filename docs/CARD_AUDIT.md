@@ -100,6 +100,18 @@ Strike, All for One, Buffer, Consuming Shadow, Coolant, Creative AI, Echo Form,
 Flak Cannon, Genetic Algorithm, Helix Drill, Ignition🚫, Machine Learning, Modded,
 Multi-Cast, Reboot, Signal Boost, Spinner, Trash to Treasure, Voltaic.
 
+### Necrobinder — remaining missing (after batches 1–3)
+Done across batches: all Doom/Soul/Ethereal payoffs, the on-event power cards
+(Danse Macabre, Pagestorm, Sleight of Flesh, Friendship, Demesne, Lethality,
+Countdown, Reaper Form, Devour Life, Haunt, Call of the Void), the Osty-attack
+set, and Hang (+ multiplier), Veilpiercer, Eidolon, Banshee's Cry, Shared Fate.
+**Still ❌:** The Scythe (wiki page 404 — need exact text), Undeath (copy a hand
+card to discard), Dirge (X-cost summon), Melancholy (cost drops on enemy deaths),
+Sentry Mode (needs the Sweeping Gaze token), Transfigure (needs the Replay
+keyword), Necro Mastery (Osty-HP-loss → enemy HP loss), Right Hand Hand
+(self-return on Osty attack). **🚫 blocked:** Legion of Bone (allies),
+Forbidden Grimoire (end-of-combat deck removal).
+
 ## Silent — pending full audit
 StS1-only cards still present (Bane, Quick Slash, Caltrops, Catalyst, A Thousand
 Cuts, Die Die Die, Glass Knife, Unload, Eviscerate, Corpse Explosion, etc.) →

@@ -916,6 +916,58 @@ export const NECROBINDER_CARDS: CardDef[] = [
     },
   },
   {
+    id: "hang",
+    name: "Hang",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "rare",
+    cost: 1,
+    target: "enemy",
+    // Deal damage (scaled by this enemy's Hang), then double its Hang.
+    effects: [
+      { kind: "damage", amount: 10, hangScaled: true },
+      { kind: "doubleHang" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 13, hangScaled: true },
+        { kind: "doubleHang" },
+      ],
+    },
+  },
+  {
+    id: "veilpiercer",
+    name: "Veilpiercer",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "damage", amount: 10 },
+      { kind: "nextEtherealFree" },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "damage", amount: 13 },
+        { kind: "nextEtherealFree" },
+      ],
+    },
+  },
+  {
+    id: "call_of_the_void",
+    name: "Call of the Void",
+    character: "necrobinder",
+    type: "power",
+    rarity: "rare",
+    cost: 1,
+    target: "self",
+    innate: true,
+    // At the start of each turn, add a random Ethereal card to your hand.
+    effects: [{ kind: "applyPower", power: "call_of_the_void", amount: 1, to: "self" }],
+    upgrade: { effects: [{ kind: "applyPower", power: "call_of_the_void", amount: 1, to: "self" }] },
+  },
+  {
     id: "shared_fate",
     name: "Shared Fate",
     character: "necrobinder",

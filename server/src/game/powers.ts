@@ -143,6 +143,10 @@ export const POWERS: Record<string, PowerDef> = {
   lethality: { id: "lethality", name: "Lethality", kind: "buff" },
   // Cost Up (Borrowed Time): your cards cost more; wears off at end of turn.
   cost_up: { id: "cost_up", name: "Cost Up", kind: "debuff", decaysPerTurn: true },
+  // Hang (Necrobinder): Hang cards deal this many times more damage to this enemy.
+  hang: { id: "hang", name: "Hang", kind: "debuff" },
+  // Call of the Void (Necrobinder): add a random Ethereal card to hand each turn.
+  call_of_the_void: { id: "call_of_the_void", name: "Call of the Void", kind: "buff" },
 };
 
 export function getPower(id: PowerId): PowerDef {

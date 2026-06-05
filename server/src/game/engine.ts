@@ -106,6 +106,8 @@ interface InternalPlayer {
   etherealUids: Set<string>;
   // Card instances given Retain (e.g. Snap), by uid.
   retainUids: Set<string>;
+  // Veilpiercer: the next Ethereal card played this turn costs 0.
+  nextEtherealFree: boolean;
   // --- Regent resources ---
   // Star Energy: a second resource that persists across turns within a combat.
   stars: number;
@@ -281,6 +283,7 @@ export class GameEngine {
       doomAppliedThisTurn: false,
       etherealUids: new Set<string>(),
       retainUids: new Set<string>(),
+      nextEtherealFree: false,
       stars: 0,
       forge: 0,
       usesStars: seed.deck.some((spec) => resolveCard(spec.id, false)?.character === "regent"),
@@ -460,6 +463,18 @@ export class GameEngine {
       // Spectrum Shift: add random Colorless cards to hand at the start of the turn.
       const spectrum = p.powers.get("spectrum_shift") ?? 0;
       if (spectrum > 0) this.addRandomCardsToPile(p, "neutral", spectrum, "hand");
+      // Call of the Void: add a random Ethereal Necrobinder card to hand each turn.
+      const cotv = p.powers.get("call_of_the_void") ?? 0;
+      if (cotv > 0) {
+        const pool = cardsForCharacter("necrobinder").filter((c) => c.ethereal);
+        let made = 0;
+        for (let i = 0; i < cotv && pool.length > 0; i++) {
+          const pick = pool[Math.floor(this.rng() * pool.length)];
+          p.hand.push({ uid: uid("c"), id: pick.id, upgraded: false });
+          made++;
+        }
+        if (made > 0) this.onCardCreated(p, made);
+      }
       // Infinite Blades: add Shivs to your hand at the start of your turn.
       const blades = p.powers.get("infinite_blades") ?? 0;
       for (let i = 0; i < blades; i++) p.hand.push({ uid: uid("c"), id: "shiv", upgraded: false });
@@ -648,6 +663,7 @@ export class GameEngine {
     // Spirit of Ash: gain Block whenever you play an Ethereal card.
     if (def.ethereal || p.etherealUids.has(inst.uid)) {
       p.etherealPlayedThisTurn += 1;
+      p.nextEtherealFree = false; // Veilpiercer's free play is consumed
       const ash = p.powers.get("spirit_of_ash") ?? 0;
       if (ash > 0) this.gainBlock(p, ash, "Spirit of Ash");
     }
@@ -729,6 +745,8 @@ export class GameEngine {
     // Void Form: the first N cards each turn cost 0.
     const vf = p.powers.get("void_form") ?? 0;
     if (vf > 0 && p.cardsPlayedThisTurn < vf) return 0;
+    // Veilpiercer: the next Ethereal card played this turn is free.
+    if (p.nextEtherealFree && (def.ethereal || p.etherealUids.has(inst?.uid ?? ""))) return 0;
     // Kingly Kick: subtract whatever cost reduction this instance has accrued.
     const drawDown = inst ? this.costReduction.get(inst.uid) ?? 0 : 0;
     // Borrowed Time: every card costs more while Cost Up is active.
@@ -1372,6 +1390,8 @@ export class GameEngine {
         for (const tid of targets) {
           const tgt = this.players.get(tid);
           if (!tgt) continue;
+          // Hang: this card deals more damage to enemies with the Hang multiplier.
+          const tgtBase = eff.hangScaled ? base * Math.max(1, tgt.powers.get("hang") ?? 0) : base;
           // Freeze damage now so it reflects buffs/debuffs at THIS point in the
           // turn — not whatever lands later.
           this.pending.push({
@@ -1379,7 +1399,7 @@ export class GameEngine {
             sourceId: source.id,
             targetId: tid,
             cardName: def.name,
-            perHit: this.computeDamage(base, source, tgt, true, eff.strengthMul ?? 1),
+            perHit: this.computeDamage(tgtBase, source, tgt, true, eff.strengthMul ?? 1),
             times: eff.times ?? 1,
             lifesteal: eff.lifesteal,
             maxHpOnKill: eff.maxHpOnKill,
@@ -1449,6 +1469,20 @@ export class GameEngine {
         }
         break;
       }
+      case "doubleHang": {
+        // Hang: first application sets the multiplier to 2; later ones double it.
+        for (const tid of targets) {
+          const t = this.players.get(tid);
+          if (!t) continue;
+          const cur = t.powers.get("hang") ?? 0;
+          t.powers.set("hang", cur === 0 ? 2 : cur * 2);
+          this.pushLog(`☠ ${t.name}'s Hang is now ${t.powers.get("hang")}×.`);
+        }
+        break;
+      }
+      case "nextEtherealFree":
+        source.nextEtherealFree = true;
+        break;
       case "spreadDebuffs": {
         // Misery: copy every debuff on the target enemy onto all other enemies.
         const target = this.players.get(targets[0]);
@@ -2946,6 +2980,12 @@ export function describeCard(def: CardDef): string {
         break;
       case "exhaustHandForIntangible":
         parts.push(`Exhaust your hand; if you exhaust ${e.threshold}+ cards, gain ${e.intangible} Intangible`);
+        break;
+      case "doubleHang":
+        parts.push("Double the damage Hang cards deal to this enemy");
+        break;
+      case "nextEtherealFree":
+        parts.push("The next Ethereal card you play this turn costs 0");
         break;
       case "block":
         parts.push(`Gain ${e.amount} Block`);
