@@ -1748,7 +1748,7 @@ export class GameEngine {
             times,
           });
         }
-        source.ostyAttacksThisTurn += 1;
+        this.onOstyAttack(source);
         break;
       }
       case "applyPowerAll": {
@@ -1774,7 +1774,7 @@ export class GameEngine {
             times: 1,
           });
         }
-        source.ostyAttacksThisTurn += 1;
+        this.onOstyAttack(source);
         break;
       }
       case "applyDoom": {
@@ -2305,6 +2305,17 @@ export class GameEngine {
       p.ostyMaxHp += amount;
       p.ostyHp += amount;
       this.pushLog(`✦ ${p.name}'s Osty grows by ${amount} HP (now ${p.ostyHp}/${p.ostyMaxHp}).`);
+    }
+  }
+
+  // Right Hand Hand returns from the discard pile to hand whenever Osty attacks.
+  private onOstyAttack(p: InternalPlayer): void {
+    p.ostyAttacksThisTurn += 1;
+    for (let i = p.discard.length - 1; i >= 0; i--) {
+      if (p.discard[i].id === "right_hand_hand") {
+        p.hand.push(p.discard.splice(i, 1)[0]);
+        this.pushLog(`✦ ${p.name}'s Right Hand Hand returns to hand.`);
+      }
     }
   }
 

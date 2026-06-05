@@ -100,17 +100,22 @@ Strike, All for One, Buffer, Consuming Shadow, Coolant, Creative AI, Echo Form,
 Flak Cannon, Genetic Algorithm, Helix Drill, Ignition🚫, Machine Learning, Modded,
 Multi-Cast, Reboot, Signal Boost, Spinner, Trash to Treasure, Voltaic.
 
-### Necrobinder — remaining missing (after batches 1–3)
-Done across batches: all Doom/Soul/Ethereal payoffs, the on-event power cards
-(Danse Macabre, Pagestorm, Sleight of Flesh, Friendship, Demesne, Lethality,
-Countdown, Reaper Form, Devour Life, Haunt, Call of the Void), the Osty-attack
-set, and Hang (+ multiplier), Veilpiercer, Eidolon, Banshee's Cry, Shared Fate.
-**Still ❌:** The Scythe (wiki page 404 — need exact text), Undeath (copy a hand
-card to discard), Dirge (X-cost summon), Melancholy (cost drops on enemy deaths),
-Sentry Mode (needs the Sweeping Gaze token), Transfigure (needs the Replay
-keyword), Necro Mastery (Osty-HP-loss → enemy HP loss), Right Hand Hand
-(self-return on Osty attack). **🚫 blocked:** Legion of Bone (allies),
-Forbidden Grimoire (end-of-combat deck removal).
+### Necrobinder — DONE (82 cards, no approximations)
+Implemented across batches 1–5: every Doom/Soul/Ethereal payoff, all on-event
+power cards, the full Osty-attack set (incl. Right Hand Hand's self-return,
+Hang's multiplier, Squeeze/Rattle scaling), and the X-cost / cost-scaling cards
+(Dirge, Banshee's Cry, Melancholy, Borrowed Time, Eidolon, Undeath).
+
+**Only 6 cards remain unbuilt, all for lack of data or a PvP analog (NOT
+approximated):**
+- 🚫 **Forbidden Grimoire** — removes a deck card at end of combat (no end-of-combat
+  in PvP).
+- 🚫 **Legion of Bone** — "all players summon" (co-op/allies only).
+- **The Scythe**, **Transfigure**, **Sentry Mode**, **Necro Mastery** — these four
+  have no individual wiki page (only a terse module line), and their exact rules
+  (The Scythe's permanent-damage-vs-Exhaust, Transfigure's "Replay" keyword,
+  Sentry Mode's "Sweeping Gaze" token, Necro Mastery's Osty-HP-loss propagation)
+  aren't documented precisely. Left ❌ rather than fabricated. **Need exact text.**
 
 ## Silent — pending full audit
 StS1-only cards still present (Bane, Quick Slash, Caltrops, Catalyst, A Thousand

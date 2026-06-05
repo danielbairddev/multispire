@@ -807,6 +807,18 @@ export const NECROBINDER_CARDS: CardDef[] = [
     upgrade: { effects: [{ kind: "ostyDamageFirstDraw", amount: 6, draw: 1 }] },
   },
   {
+    id: "right_hand_hand",
+    name: "Right Hand Hand",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 0,
+    target: "enemy",
+    // Osty deals damage; returns from your discard pile whenever Osty attacks.
+    effects: [{ kind: "ostyDamage", amount: 4 }],
+    upgrade: { effects: [{ kind: "ostyDamage", amount: 6 }] },
+  },
+  {
     id: "protector",
     name: "Protector",
     character: "necrobinder",
