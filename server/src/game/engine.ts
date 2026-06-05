@@ -149,6 +149,8 @@ interface InternalPlayer {
   // Osty (a summon). ostyMaxHp 0 means no Osty is currently summoned.
   ostyHp: number;
   ostyMaxHp: number;
+  // Number of times Osty has attacked this turn (Flatten/Rattle/Squeeze).
+  ostyAttacksThisTurn: number;
   // True for Necrobinder players (deck contains Necrobinder cards): surface Osty.
   usesOsty: boolean;
   seedDeck: DeckList; // the build they brought, for the build viewer
@@ -293,6 +295,7 @@ export class GameEngine {
       usesOrbs: seed.deck.some((spec) => resolveCard(spec.id, false)?.character === "defect"),
       ostyHp: 0,
       ostyMaxHp: 0,
+      ostyAttacksThisTurn: 0,
       usesOsty: seed.deck.some((spec) => resolveCard(spec.id, false)?.character === "necrobinder"),
       seedDeck: seed.deck,
     };
@@ -424,6 +427,7 @@ export class GameEngine {
       p.cardsPlayedThisTurn = 0;
       p.discardsThisTurn = 0;
       p.doomAppliedThisTurn = false;
+      p.ostyAttacksThisTurn = 0;
       p.starsGainedThisTurn = 0;
       p.spentStarsThisTurn = false;
       // Focus Drain (Biased Cognition): lose Focus at the start of each turn.
@@ -708,6 +712,8 @@ export class GameEngine {
     const drawDown = inst ? this.costReduction.get(inst.uid) ?? 0 : 0;
     if (def.dynamicCost === "hp_loss") return Math.max(0, def.cost - p.hpLossCount - drawDown);
     if (def.dynamicCost === "discards") return Math.max(0, def.cost - p.discardsThisTurn - drawDown);
+    // Flatten: free if Osty has already attacked this turn.
+    if (def.dynamicCost === "osty_attacked") return p.ostyAttacksThisTurn > 0 ? 0 : Math.max(0, def.cost - drawDown);
     return Math.max(0, def.cost - drawDown);
   }
 
@@ -1601,13 +1607,18 @@ export class GameEngine {
         this.summonOsty(source, eff.amount);
         break;
       case "ostyDamage": {
-        // Osty strikes for a flat amount + fractions of his Max/current HP + Calcify.
+        // Osty strikes for a flat amount + fractions of his Max/current HP +
+        // Calcify + a bonus per prior Osty attack this turn (Squeeze).
         const calcify = source.powers.get("calcify") ?? 0;
+        const prior = source.ostyAttacksThisTurn;
         const dmg =
           eff.amount +
           Math.floor((eff.perOstyMaxHp ?? 0) * source.ostyMaxHp) +
           Math.floor((eff.perOstyCurrentHp ?? 0) * source.ostyHp) +
+          (eff.perOstyAttackThisTurn ?? 0) * prior +
           calcify;
+        // Rattle hits once more for each prior Osty attack this turn.
+        const times = eff.hitsPerOstyAttack ? 1 + prior : 1;
         for (const tid of targets) {
           const tgt = this.players.get(tid);
           if (!tgt) continue;
@@ -1617,8 +1628,15 @@ export class GameEngine {
             targetId: tid,
             cardName: `${def.name} (Osty)`,
             perHit: this.computeDamage(dmg, source, tgt, false),
-            times: 1,
+            times,
           });
+        }
+        source.ostyAttacksThisTurn += 1;
+        break;
+      }
+      case "applyPowerAll": {
+        for (const id of this.aliveEnemies(source.id)) {
+          this.applyEffect({ kind: "applyPower", power: eff.power, amount: eff.amount, to: "enemy" }, source, [id], def, instUid);
         }
         break;
       }
@@ -3024,8 +3042,15 @@ export function describeCard(def: CardDef): string {
       case "ostyDamage": {
         let t = `Osty deals ${e.amount} damage`;
         if (e.perOstyCurrentHp) t += e.perOstyCurrentHp === 1 ? " plus his current HP" : ` plus ${e.perOstyCurrentHp}× his current HP`;
-        if (e.perOstyMaxHp) t += ` plus ${e.perOstyMaxHp}× his Max HP`;
+        if (e.perOstyMaxHp) t += e.perOstyMaxHp === 1 ? " plus his Max HP" : ` plus ${e.perOstyMaxHp}× his Max HP`;
+        if (e.perOstyAttackThisTurn) t += `, +${e.perOstyAttackThisTurn} per other Osty attack this turn`;
+        if (e.hitsPerOstyAttack) t += `, hitting again for each Osty attack this turn`;
         parts.push(t);
+        break;
+      }
+      case "applyPowerAll": {
+        const pw = getPower(e.power).name;
+        parts.push(`Apply ${e.amount} ${pw} to ALL enemies`);
         break;
       }
       case "sacrificeOsty":
@@ -3066,6 +3091,7 @@ export function describeCard(def: CardDef): string {
   let text = parts.join(". ");
   if (def.dynamicCost === "hp_loss") text += ". Costs 1 less for each time you've lost HP this combat";
   if (def.dynamicCost === "discards") text += ". Costs 1 less for each card discarded this turn";
+  if (def.dynamicCost === "osty_attacked") text += ". Costs 0 if Osty attacked this turn";
   if (def.costDownOnDraw)
     text += `. Costs ${def.costDownOnDraw} less each time you draw it this combat`;
   if (def.damageUpOnDraw)

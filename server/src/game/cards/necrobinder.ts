@@ -776,6 +776,115 @@ export const NECROBINDER_CARDS: CardDef[] = [
     upgrade: { effects: [{ kind: "damage", amount: 9, perSoulInExhaust: 3 }] },
   },
   {
+    id: "protector",
+    name: "Protector",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    // Osty deals 10 (15) damage plus his Max HP.
+    effects: [{ kind: "ostyDamage", amount: 10, perOstyMaxHp: 1 }],
+    upgrade: { effects: [{ kind: "ostyDamage", amount: 15, perOstyMaxHp: 1 }] },
+  },
+  {
+    id: "sic_em",
+    name: "Sic 'Em",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    effects: [
+      { kind: "ostyDamage", amount: 5 },
+      { kind: "summon", amount: 2 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "ostyDamage", amount: 6 },
+        { kind: "summon", amount: 3 },
+      ],
+    },
+  },
+  {
+    id: "high_five",
+    name: "High Five",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 2,
+    target: "enemy",
+    effects: [
+      { kind: "ostyDamage", amount: 11 },
+      { kind: "applyPowerAll", power: "vulnerable", amount: 2 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "ostyDamage", amount: 13 },
+        { kind: "applyPowerAll", power: "vulnerable", amount: 3 },
+      ],
+    },
+  },
+  {
+    id: "flatten",
+    name: "Flatten",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "common",
+    cost: 2,
+    target: "enemy",
+    // Costs 0 if Osty already attacked this turn.
+    dynamicCost: "osty_attacked",
+    effects: [{ kind: "ostyDamage", amount: 12 }],
+    upgrade: { effects: [{ kind: "ostyDamage", amount: 16 }] },
+  },
+  {
+    id: "rattle",
+    name: "Rattle",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 1,
+    target: "enemy",
+    // Osty deals 7 (9) damage, hitting again for each Osty attack this turn.
+    effects: [{ kind: "ostyDamage", amount: 7, hitsPerOstyAttack: true }],
+    upgrade: { effects: [{ kind: "ostyDamage", amount: 9, hitsPerOstyAttack: true }] },
+  },
+  {
+    id: "squeeze",
+    name: "Squeeze",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "rare",
+    cost: 3,
+    target: "enemy",
+    // Osty deals 25 (30) damage, +5 (6) per other Osty attack this turn.
+    effects: [{ kind: "ostyDamage", amount: 25, perOstyAttackThisTurn: 5 }],
+    upgrade: { effects: [{ kind: "ostyDamage", amount: 30, perOstyAttackThisTurn: 6 }] },
+  },
+  {
+    id: "bone_shards",
+    name: "Bone Shards",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 1,
+    target: "all_enemies",
+    // Osty hits all enemies and gains Block, then dies.
+    effects: [
+      { kind: "ostyDamage", amount: 9 },
+      { kind: "block", amount: 9 },
+      { kind: "sacrificeOsty", blockPerMaxHp: 0 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "ostyDamage", amount: 12 },
+        { kind: "block", amount: 12 },
+        { kind: "sacrificeOsty", blockPerMaxHp: 0 },
+      ],
+    },
+  },
+  {
     id: "countdown",
     name: "Countdown",
     character: "necrobinder",

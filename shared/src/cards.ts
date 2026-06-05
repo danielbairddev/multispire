@@ -127,9 +127,20 @@ export type Effect =
   // --- Necrobinder: Osty (a summon) & Doom ---
   // Summon Osty with `amount` Max HP, or raise his Max HP by `amount` if he exists.
   | { kind: "summon"; amount: number }
-  // Osty strikes for `amount` plus `perOstyMaxHp` × Osty's Max HP and
-  // `perOstyCurrentHp` × Osty's current HP (Unleash adds his current HP).
-  | { kind: "ostyDamage"; amount: number; perOstyMaxHp?: number; perOstyCurrentHp?: number }
+  // Osty strikes for `amount` plus `perOstyMaxHp` × Osty's Max HP,
+  // `perOstyCurrentHp` × Osty's current HP (Unleash), and `perOstyAttackThisTurn`
+  // × Osty's prior attacks this turn (Squeeze). `hitsPerOstyAttack` makes it hit
+  // once more for each prior Osty attack this turn (Rattle).
+  | {
+      kind: "ostyDamage";
+      amount: number;
+      perOstyMaxHp?: number;
+      perOstyCurrentHp?: number;
+      perOstyAttackThisTurn?: number;
+      hitsPerOstyAttack?: boolean;
+    }
+  // Apply a power to ALL alive enemies regardless of the card's target (High Five).
+  | { kind: "applyPowerAll"; power: PowerId; amount: number }
   // Osty dies; gain Block equal to `blockPerMaxHp` × Osty's Max HP (e.g. Sacrifice).
   | { kind: "sacrificeOsty"; blockPerMaxHp: number }
   // Heal Osty by `amount` (up to his Max HP), e.g. Spur.
@@ -237,7 +248,7 @@ export interface CardDef {
    * each time its owner has lost HP this combat (e.g. Blood for Blood). "discards"
    * makes it cost 1 less for each card discarded this turn (e.g. Eviscerate).
    */
-  dynamicCost?: "hp_loss" | "discards";
+  dynamicCost?: "hp_loss" | "discards" | "osty_attacked";
   /**
    * Permanently lowers this card instance's cost by this much every time it is
    * drawn this combat (e.g. Kingly Kick: −1 per draw). Tracked per card instance.

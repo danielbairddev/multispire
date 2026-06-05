@@ -1526,4 +1526,27 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert(exhaust.some((c) => c.id === "defend_n"), "the Ethereal'd card was Exhausted at end of turn");
 }
 
+// --- Osty attacks: Flatten free after Osty attacked; Rattle hits per Osty attack ---
+{
+  const g = new GameEngine("ostyatk", seededRng(13));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "bodyguard" }, { id: "poke" }, { id: "rattle" }, { id: "flatten" }, { id: "strike_n" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 300 });
+  g.start();
+  ensure(g, "a");
+  const flattenCost = () => handOf(g, "a").find((c) => c.id === "flatten")!.cost;
+  const before = hpOf(g, "b");
+  play(g, "a", "bodyguard"); // summon Osty
+  assert(flattenCost() === 2, "Flatten costs 2 before Osty attacks");
+  play(g, "a", "poke", "b"); // Osty attack #1 (6 dmg)
+  assert(flattenCost() === 0, "Flatten is free after Osty attacked this turn");
+  play(g, "a", "rattle", "b"); // 7 × (1 + 1 prior) = 14
+  finishTurn(g);
+  assert(before - hpOf(g, "b") === 20, "Poke 6 + Rattle 7×2 = 20, got " + (before - hpOf(g, "b")));
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);
