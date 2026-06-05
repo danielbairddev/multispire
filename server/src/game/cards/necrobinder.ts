@@ -776,6 +776,37 @@ export const NECROBINDER_CARDS: CardDef[] = [
     upgrade: { effects: [{ kind: "damage", amount: 9, perSoulInExhaust: 3 }] },
   },
   {
+    id: "snap",
+    name: "Snap",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    target: "enemy",
+    // Osty deals damage; add Retain to a chosen card in your hand.
+    effects: [
+      { kind: "ostyDamage", amount: 7 },
+      { kind: "makeRetainChosen", amount: 1 },
+    ],
+    upgrade: {
+      effects: [
+        { kind: "ostyDamage", amount: 10 },
+        { kind: "makeRetainChosen", amount: 1 },
+      ],
+    },
+  },
+  {
+    id: "fetch",
+    name: "Fetch",
+    character: "necrobinder",
+    type: "attack",
+    rarity: "uncommon",
+    cost: 0,
+    target: "enemy",
+    effects: [{ kind: "ostyDamageFirstDraw", amount: 3, draw: 1 }],
+    upgrade: { effects: [{ kind: "ostyDamageFirstDraw", amount: 6, draw: 1 }] },
+  },
+  {
     id: "protector",
     name: "Protector",
     character: "necrobinder",

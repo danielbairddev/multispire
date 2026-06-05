@@ -104,6 +104,8 @@ interface InternalPlayer {
   doomAppliedThisTurn: boolean;
   // Card instances made Ethereal this combat (e.g. Sculpting Strike), by uid.
   etherealUids: Set<string>;
+  // Card instances given Retain (e.g. Snap), by uid.
+  retainUids: Set<string>;
   // --- Regent resources ---
   // Star Energy: a second resource that persists across turns within a combat.
   stars: number;
@@ -169,7 +171,8 @@ type ChoiceKind =
   | "discardChosen"
   | "duplicateChosen"
   | "discover"
-  | "makeEthereal";
+  | "makeEthereal"
+  | "makeRetain";
 interface PendingChoice {
   playerId: string;
   kind: ChoiceKind;
@@ -273,6 +276,7 @@ export class GameEngine {
       discardsThisTurn: 0,
       doomAppliedThisTurn: false,
       etherealUids: new Set<string>(),
+      retainUids: new Set<string>(),
       stars: 0,
       forge: 0,
       usesStars: seed.deck.some((spec) => resolveCard(spec.id, false)?.character === "regent"),
@@ -414,7 +418,8 @@ export class GameEngine {
       for (const c of leftover) {
         const cdef = resolveCard(c.id, c.upgraded);
         const isEthereal = cdef?.ethereal || p.etherealUids.has(c.uid);
-        if (keepAll || (cdef?.retain && !isEthereal)) p.hand.push(c);
+        const isRetain = cdef?.retain || p.retainUids.has(c.uid);
+        if (keepAll || (isRetain && !isEthereal)) p.hand.push(c);
         else if (isEthereal) {
           p.etherealUids.delete(c.uid);
           this.exhaustCard(p, c);
@@ -1007,7 +1012,8 @@ export class GameEngine {
         | "discard"
         | "duplicateChosen"
         | "discover"
-        | "makeEtherealChosen";
+        | "makeEtherealChosen"
+        | "makeRetainChosen";
     }
   > {
     // A player-chosen discard pauses; a random discard resolves immediately.
@@ -1019,7 +1025,8 @@ export class GameEngine {
       eff.kind === "replayChosenSkill" ||
       eff.kind === "duplicateChosen" ||
       eff.kind === "discover" ||
-      eff.kind === "makeEtherealChosen"
+      eff.kind === "makeEtherealChosen" ||
+      eff.kind === "makeRetainChosen"
     );
   }
 
@@ -1058,7 +1065,9 @@ export class GameEngine {
           ? "discardChosen"
           : eff.kind === "makeEtherealChosen"
             ? "makeEthereal"
-            : eff.kind;
+            : eff.kind === "makeRetainChosen"
+              ? "makeRetain"
+              : eff.kind;
     const replayTimes = eff.kind === "replayChosenSkill" ? eff.times : undefined;
     const dupAmount = eff.kind === "duplicateChosen" ? eff.amount : undefined;
     const sourcePile: "hand" | "discard" = kind === "putDiscardOnDraw" ? "discard" : "hand";
@@ -1181,6 +1190,8 @@ export class GameEngine {
         return `Discover a card`;
       case "makeEthereal":
         return `Choose ${n} in your hand to make Ethereal`;
+      case "makeRetain":
+        return `Choose ${n} in your hand to gain Retain`;
     }
   }
 
@@ -1206,17 +1217,18 @@ export class GameEngine {
       }
       return;
     }
-    if (kind === "makeEthereal") {
-      // Tag the chosen hand cards as Ethereal for the rest of combat (don't move them).
+    if (kind === "makeEthereal" || kind === "makeRetain") {
+      // Tag the chosen hand cards as Ethereal / Retain for the rest of combat.
+      const set = kind === "makeEthereal" ? source.etherealUids : source.retainUids;
       for (const u of uids) {
-        if (source.hand.some((c) => c.uid === u)) source.etherealUids.add(u);
+        if (source.hand.some((c) => c.uid === u)) set.add(u);
       }
       const names = uids
         .map((u) => source.hand.find((c) => c.uid === u))
         .map((c) => (c ? resolveCard(c.id, c.upgraded)?.name ?? c.id : ""))
         .filter(Boolean)
         .join(", ");
-      this.pushLog(`✦ ${source.name} makes ${names} Ethereal.`);
+      this.pushLog(`✦ ${source.name} makes ${names} ${kind === "makeEthereal" ? "Ethereal" : "Retain"}.`);
       return;
     }
     const pile = kind === "putDiscardOnDraw" ? source.discard : source.hand;
@@ -1640,6 +1652,26 @@ export class GameEngine {
         }
         break;
       }
+      case "ostyDamageFirstDraw": {
+        // Fetch: the first time Osty attacks each turn, also draw.
+        if (source.ostyAttacksThisTurn === 0) this.drawCards(source, eff.draw);
+        const calcify = source.powers.get("calcify") ?? 0;
+        const dmg = eff.amount + calcify;
+        for (const tid of targets) {
+          const tgt = this.players.get(tid);
+          if (!tgt) continue;
+          this.pending.push({
+            uid: uid("atk"),
+            sourceId: source.id,
+            targetId: tid,
+            cardName: `${def.name} (Osty)`,
+            perHit: this.computeDamage(dmg, source, tgt, false),
+            times: 1,
+          });
+        }
+        source.ostyAttacksThisTurn += 1;
+        break;
+      }
       case "applyDoom": {
         for (const tid of targets) {
           const t = this.players.get(tid);
@@ -1923,6 +1955,7 @@ export class GameEngine {
       case "duplicateChosen":
       case "discover":
       case "makeEtherealChosen":
+      case "makeRetainChosen":
         // Interactive choices are intercepted by applyEffectList before reaching
         // here. (Only reached if nested in onExhaust/ifTargetHasPower, which our
         // cards avoid; treated as a no-op rather than pausing in those contexts.)
@@ -2983,6 +3016,14 @@ export function describeCard(def: CardDef): string {
         parts.push(`Add Ethereal to ${n > 1 ? `${n} cards` : "a card"} in your hand`);
         break;
       }
+      case "makeRetainChosen": {
+        const n = e.amount ?? 1;
+        parts.push(`Add Retain to ${n > 1 ? `${n} cards` : "a card"} in your hand`);
+        break;
+      }
+      case "ostyDamageFirstDraw":
+        parts.push(`Osty deals ${e.amount} damage; draw ${e.draw} the first time Osty attacks each turn`);
+        break;
       case "fillHandWith": {
         const name = resolveCard(e.cardId, false)?.name ?? e.cardId;
         parts.push(`Fill your hand with ${name}`);

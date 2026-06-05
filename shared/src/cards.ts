@@ -160,6 +160,12 @@ export type Effect =
   // Interactive: choose `amount` (default 1) card(s) in your hand to make Ethereal
   // for the rest of the combat (e.g. Sculpting Strike). The engine pauses.
   | { kind: "makeEtherealChosen"; amount?: number }
+  // Interactive: choose `amount` (default 1) card(s) in your hand to gain Retain
+  // for the rest of the combat (e.g. Snap). The engine pauses.
+  | { kind: "makeRetainChosen"; amount?: number }
+  // Osty deals `amount` damage; the first time Osty attacks each turn, also draw
+  // `draw` cards (e.g. Fetch).
+  | { kind: "ostyDamageFirstDraw"; amount: number; draw: number }
   // Upgrade every card in your hand, draw, and discard piles for the rest of the
   // combat (e.g. Apotheosis).
   | { kind: "upgradeAllCards" }

@@ -62,8 +62,9 @@ Grouped by what each needs.
   **Rattle** (hits per Osty attack), **Squeeze** (+per other Osty attack),
   **Bone Shards** (Osty hits all + Block, then dies). Built an Osty-attack
   counter, `osty_attacked` dynamic cost, and `applyPowerAll`.
-- ❌ still missing: Snap (add Retain to a hand card), Fetch (first-attack draw),
-  Right Hand Hand (returns from discard when Osty attacks).
+- ✅ DONE: **Snap** (add Retain to a chosen hand card — per-instance Retain via a
+  new choice), **Fetch** (draw the first time Osty attacks each turn).
+- ❌ still missing: Right Hand Hand (returns from discard when Osty attacks).
 
 **On-event power hooks (need new reactive triggers):**
 - ✅ DONE this pass: **Countdown** (turn-start Doom), **Reaper Form** (attacks

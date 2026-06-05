@@ -1549,4 +1549,28 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert(before - hpOf(g, "b") === 20, "Poke 6 + Rattle 7×2 = 20, got " + (before - hpOf(g, "b")));
 }
 
+// --- Snap: add Retain to a chosen hand card (kept across the turn) ---
+{
+  const g = new GameEngine("snap", seededRng(14));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "bodyguard" }, { id: "snap" }, { id: "strike_n" }, { id: "defend_n" }, { id: "poke" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  play(g, "a", "bodyguard");
+  assert(play(g, "a", "snap", "b") === null, "Snap plays");
+  assert(g.viewFor("a").pendingChoice != null, "Snap pauses to pick a card to Retain");
+  const target = handOf(g, "a").find((c) => c.id === "strike_n")!;
+  assert(g.resolveChoice("a", [target.uid]) === null, "choose the card to Retain");
+  finishTurn(g);
+  assert(
+    handOf(g, "a").some((c) => c.uid === target.uid),
+    "the Retain'd card stayed in hand into the next turn",
+  );
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);
