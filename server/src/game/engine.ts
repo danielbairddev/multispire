@@ -153,6 +153,10 @@ interface InternalPlayer {
   ostyMaxHp: number;
   // Number of times Osty has attacked this turn (Flatten/Rattle/Squeeze).
   ostyAttacksThisTurn: number;
+  // Cards drawn this turn (Death March) and Ethereal cards played this turn
+  // (Pull from Below). Reset each turn.
+  cardsDrawnThisTurn: number;
+  etherealPlayedThisTurn: number;
   // True for Necrobinder players (deck contains Necrobinder cards): surface Osty.
   usesOsty: boolean;
   seedDeck: DeckList; // the build they brought, for the build viewer
@@ -300,6 +304,8 @@ export class GameEngine {
       ostyHp: 0,
       ostyMaxHp: 0,
       ostyAttacksThisTurn: 0,
+      cardsDrawnThisTurn: 0,
+      etherealPlayedThisTurn: 0,
       usesOsty: seed.deck.some((spec) => resolveCard(spec.id, false)?.character === "necrobinder"),
       seedDeck: seed.deck,
     };
@@ -433,6 +439,8 @@ export class GameEngine {
       p.discardsThisTurn = 0;
       p.doomAppliedThisTurn = false;
       p.ostyAttacksThisTurn = 0;
+      p.cardsDrawnThisTurn = 0;
+      p.etherealPlayedThisTurn = 0;
       p.starsGainedThisTurn = 0;
       p.spentStarsThisTurn = false;
       // Focus Drain (Biased Cognition): lose Focus at the start of each turn.
@@ -638,7 +646,8 @@ export class GameEngine {
     const danse = p.powers.get("danse_macabre") ?? 0;
     if (danse > 0 && typeof cost === "number" && cost >= 2) this.gainBlock(p, danse, "Danse Macabre");
     // Spirit of Ash: gain Block whenever you play an Ethereal card.
-    if (def.ethereal) {
+    if (def.ethereal || p.etherealUids.has(inst.uid)) {
+      p.etherealPlayedThisTurn += 1;
       const ash = p.powers.get("spirit_of_ash") ?? 0;
       if (ash > 0) this.gainBlock(p, ash, "Spirit of Ash");
     }
@@ -722,11 +731,18 @@ export class GameEngine {
     if (vf > 0 && p.cardsPlayedThisTurn < vf) return 0;
     // Kingly Kick: subtract whatever cost reduction this instance has accrued.
     const drawDown = inst ? this.costReduction.get(inst.uid) ?? 0 : 0;
-    if (def.dynamicCost === "hp_loss") return Math.max(0, def.cost - p.hpLossCount - drawDown);
-    if (def.dynamicCost === "discards") return Math.max(0, def.cost - p.discardsThisTurn - drawDown);
+    // Borrowed Time: every card costs more while Cost Up is active.
+    const costUp = p.powers.get("cost_up") ?? 0;
+    if (def.dynamicCost === "hp_loss") return Math.max(0, def.cost - p.hpLossCount - drawDown + costUp);
+    if (def.dynamicCost === "discards") return Math.max(0, def.cost - p.discardsThisTurn - drawDown + costUp);
     // Flatten: free if Osty has already attacked this turn.
-    if (def.dynamicCost === "osty_attacked") return p.ostyAttacksThisTurn > 0 ? 0 : Math.max(0, def.cost - drawDown);
-    return Math.max(0, def.cost - drawDown);
+    if (def.dynamicCost === "osty_attacked") return p.ostyAttacksThisTurn > 0 ? 0 : Math.max(0, def.cost - drawDown + costUp);
+    // Banshee's Cry: costs 2 less for each Ethereal card in your hand.
+    if (def.dynamicCost === "ethereal_in_hand") {
+      const eth = p.hand.filter((c) => resolveCard(c.id, c.upgraded)?.ethereal || p.etherealUids.has(c.uid)).length;
+      return Math.max(0, def.cost - 2 * eth - drawDown + costUp);
+    }
+    return Math.max(0, def.cost - drawDown + costUp);
   }
 
   /** A player passes priority. */
@@ -1342,8 +1358,10 @@ export class GameEngine {
         const soulBonus = eff.perSoulInExhaust
           ? eff.perSoulInExhaust * source.exhaust.filter((c) => c.id === "soul").length
           : 0;
+        const drawnBonus = (eff.perCardDrawnThisTurn ?? 0) * source.cardsDrawnThisTurn;
+        const etherealBonus = (eff.perEtherealPlayedThisTurn ?? 0) * source.etherealPlayedThisTurn;
         let base =
-          eff.amount + strikeBonus + rampageBonus + starCardBonus + skillBonus + starGainBonus + createdBonus + vigor + accuracyBonus + drawBonus + soulBonus;
+          eff.amount + strikeBonus + rampageBonus + starCardBonus + skillBonus + starGainBonus + createdBonus + vigor + accuracyBonus + drawBonus + soulBonus + drawnBonus + etherealBonus;
         // Lethality: your first Attack each turn deals a % more damage.
         const lethality = source.powers.get("lethality") ?? 0;
         if (lethality > 0 && def.type === "attack" && source.attacksThisTurn === 0) {
@@ -1416,6 +1434,18 @@ export class GameEngine {
             perHit: this.computeDamage(Math.max(0, source.block), source, tgt, false),
             times: 1,
           });
+        }
+        break;
+      }
+      case "exhaustHandForIntangible": {
+        // Eidolon: Exhaust your hand; if you exhausted enough, gain Intangible.
+        const hand = source.hand;
+        source.hand = [];
+        const count = hand.length;
+        for (const c of hand) this.exhaustCard(source, c);
+        if (count >= eff.threshold) {
+          source.powers.set("intangible", (source.powers.get("intangible") ?? 0) + eff.intangible);
+          this.pushLog(`✦ ${source.name} gains ${eff.intangible} Intangible (Eidolon).`);
         }
         break;
       }
@@ -2603,6 +2633,8 @@ export class GameEngine {
           if (this.inTurnStartDraw) this.turnStartEnergyLoss += def.energyLossOnDraw;
           else p.energy = Math.max(0, p.energy - def.energyLossOnDraw);
         }
+        // Death March counts cards drawn by effects this turn (not the opening hand).
+        if (!this.inTurnStartDraw) p.cardsDrawnThisTurn += 1;
         // Pagestorm: drawing an Ethereal card draws extra cards.
         const pagestorm = p.powers.get("pagestorm") ?? 0;
         if (pagestorm > 0 && (def?.ethereal || p.etherealUids.has(c.uid))) {
@@ -2896,8 +2928,10 @@ export function describeCard(def: CardDef): string {
         const created = e.perCardCreatedThisCombat ? `, +${e.perCardCreatedThisCombat} per card created this combat` : "";
         const koStars = e.starsOnKill ? `, gain ${e.starsOnKill} Star Energy if this kills` : "";
         const soul = e.perSoulInExhaust ? `, +${e.perSoulInExhaust} per Soul in your Exhaust pile` : "";
+        const drawn = e.perCardDrawnThisTurn ? `, +${e.perCardDrawnThisTurn} per card drawn this turn` : "";
+        const ethPlayed = e.perEtherealPlayedThisTurn ? `, +${e.perEtherealPlayedThisTurn} per Ethereal played this turn` : "";
         parts.push(
-          `Deal ${e.amount}${e.times && e.times > 1 ? ` x${e.times}` : ""} damage${mul}${per}${life}${kill}${ramp}${star}${skill}${starGain}${created}${koStars}${soul}${empty}`,
+          `Deal ${e.amount}${e.times && e.times > 1 ? ` x${e.times}` : ""} damage${mul}${per}${life}${kill}${ramp}${star}${skill}${starGain}${created}${koStars}${soul}${drawn}${ethPlayed}${empty}`,
         );
         break;
       }
@@ -2909,6 +2943,9 @@ export function describeCard(def: CardDef): string {
         break;
       case "spreadDebuffs":
         parts.push("Apply the enemy's debuffs to all other enemies");
+        break;
+      case "exhaustHandForIntangible":
+        parts.push(`Exhaust your hand; if you exhaust ${e.threshold}+ cards, gain ${e.intangible} Intangible`);
         break;
       case "block":
         parts.push(`Gain ${e.amount} Block`);
@@ -3158,6 +3195,7 @@ export function describeCard(def: CardDef): string {
   if (def.dynamicCost === "hp_loss") text += ". Costs 1 less for each time you've lost HP this combat";
   if (def.dynamicCost === "discards") text += ". Costs 1 less for each card discarded this turn";
   if (def.dynamicCost === "osty_attacked") text += ". Costs 0 if Osty attacked this turn";
+  if (def.dynamicCost === "ethereal_in_hand") text += ". Costs 2 less for each Ethereal card in your hand";
   if (def.costDownOnDraw)
     text += `. Costs ${def.costDownOnDraw} less each time you draw it this combat`;
   if (def.damageUpOnDraw)

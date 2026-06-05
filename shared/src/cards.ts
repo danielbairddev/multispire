@@ -53,6 +53,10 @@ export type Effect =
       onlyIfDrawEmpty?: boolean;
       // Adds this much damage per Soul card in your Exhaust pile (e.g. Soul Storm).
       perSoulInExhaust?: number;
+      // Adds this much damage per card drawn this turn (Death March).
+      perCardDrawnThisTurn?: number;
+      // Adds this much damage per Ethereal card played this turn (Pull from Below).
+      perEtherealPlayedThisTurn?: number;
     }
   | { kind: "block"; amount: number }
   | { kind: "applyPower"; power: PowerId; amount: number; to: "enemy" | "self" }
@@ -157,6 +161,9 @@ export type Effect =
   | { kind: "damageEqualToTargetDoom" }
   // Copy every debuff on the target enemy onto all OTHER enemies (e.g. Misery).
   | { kind: "spreadDebuffs" }
+  // Exhaust your whole hand; if you exhausted at least `threshold` cards, gain
+  // `intangible` Intangible (e.g. Eidolon).
+  | { kind: "exhaustHandForIntangible"; threshold: number; intangible: number }
   // Interactive: choose `amount` (default 1) card(s) in your hand to make Ethereal
   // for the rest of the combat (e.g. Sculpting Strike). The engine pauses.
   | { kind: "makeEtherealChosen"; amount?: number }
@@ -254,7 +261,7 @@ export interface CardDef {
    * each time its owner has lost HP this combat (e.g. Blood for Blood). "discards"
    * makes it cost 1 less for each card discarded this turn (e.g. Eviscerate).
    */
-  dynamicCost?: "hp_loss" | "discards" | "osty_attacked";
+  dynamicCost?: "hp_loss" | "discards" | "osty_attacked" | "ethereal_in_hand";
   /**
    * Permanently lowers this card instance's cost by this much every time it is
    * drawn this combat (e.g. Kingly Kick: −1 per draw). Tracked per card instance.
@@ -421,6 +428,8 @@ export type PowerId =
   | "demesne"
   // Lethality (Necrobinder): your first Attack each turn deals extra damage (×N/2 %).
   | "lethality"
+  // Cost Up (Borrowed Time): your cards cost this much more; wears off each turn.
+  | "cost_up"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

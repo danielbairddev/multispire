@@ -1609,4 +1609,35 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   assert(before - hpOf(g, "b") === 9, "Sleight of Flesh deals 9 when a debuff is applied, got " + (before - hpOf(g, "b")));
 }
 
+// --- Banshee's Cry costs 2 less per Ethereal in hand; Borrowed Time raises costs ---
+{
+  const g = new GameEngine("ethcost", seededRng(17));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "banshees_cry" }, { id: "defile" }, { id: "fear" }, { id: "strike_n" }, { id: "defend_n" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  // Defile + Fear are Ethereal in hand -> 9 - 2×2 = 5.
+  assert(handOf(g, "a").find((c) => c.id === "banshees_cry")!.cost === 5, "Banshee's Cry costs 5 with 2 Ethereal in hand");
+}
+{
+  const g = new GameEngine("costup", seededRng(18));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "borrowed_time" }, { id: "strike_n" }, { id: "defend_n" }, { id: "bodyguard" }, { id: "poke" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  assert(handOf(g, "a").find((c) => c.id === "strike_n")!.cost === 1, "Strike costs 1 normally");
+  play(g, "a", "borrowed_time");
+  assert(handOf(g, "a").find((c) => c.id === "strike_n")!.cost === 2, "Borrowed Time makes Strike cost 2");
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

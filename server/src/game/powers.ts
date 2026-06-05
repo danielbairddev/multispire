@@ -141,6 +141,8 @@ export const POWERS: Record<string, PowerDef> = {
   demesne: { id: "demesne", name: "Demesne", kind: "buff" },
   // Lethality: your first Attack each turn deals extra damage.
   lethality: { id: "lethality", name: "Lethality", kind: "buff" },
+  // Cost Up (Borrowed Time): your cards cost more; wears off at end of turn.
+  cost_up: { id: "cost_up", name: "Cost Up", kind: "debuff", decaysPerTurn: true },
 };
 
 export function getPower(id: PowerId): PowerDef {
