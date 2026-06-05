@@ -409,6 +409,18 @@ export type PowerId =
   | "calcify"
   // Exposed (Debilitate): Weak and Vulnerable are twice as effective on this enemy.
   | "exposed"
+  // Danse Macabre (Necrobinder): gain Block whenever you play a card costing 2+.
+  | "danse_macabre"
+  // Pagestorm (Necrobinder): draw an extra card whenever you draw an Ethereal card.
+  | "pagestorm"
+  // Sleight of Flesh (Necrobinder): deal damage to an enemy whenever you debuff it.
+  | "sleight_of_flesh"
+  // Friendship (Necrobinder): gain this much Energy at the start of each turn.
+  | "friendship"
+  // Demesne (Necrobinder): gain this much Energy and draw at the start of each turn.
+  | "demesne"
+  // Lethality (Necrobinder): your first Attack each turn deals extra damage (×N/2 %).
+  | "lethality"
   | string; // unknown ids are tolerated and logged by the registry
 
 export interface PowerDef {

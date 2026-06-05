@@ -129,6 +129,18 @@ export const POWERS: Record<string, PowerDef> = {
   calcify: { id: "calcify", name: "Calcify", kind: "buff" },
   // Exposed (Debilitate): Weak/Vulnerable are twice as effective; ticks down each turn.
   exposed: { id: "exposed", name: "Exposed", kind: "debuff", decaysPerTurn: true },
+  // Danse Macabre: gain Block whenever you play a card costing 2 or more.
+  danse_macabre: { id: "danse_macabre", name: "Danse Macabre", kind: "buff" },
+  // Pagestorm: draw an extra card whenever you draw an Ethereal card.
+  pagestorm: { id: "pagestorm", name: "Pagestorm", kind: "buff" },
+  // Sleight of Flesh: deal damage to an enemy whenever you apply a debuff to it.
+  sleight_of_flesh: { id: "sleight_of_flesh", name: "Sleight of Flesh", kind: "buff" },
+  // Friendship: gain Energy at the start of each turn.
+  friendship: { id: "friendship", name: "Friendship", kind: "buff" },
+  // Demesne: gain Energy and draw at the start of each turn.
+  demesne: { id: "demesne", name: "Demesne", kind: "buff" },
+  // Lethality: your first Attack each turn deals extra damage.
+  lethality: { id: "lethality", name: "Lethality", kind: "buff" },
 };
 
 export function getPower(id: PowerId): PowerDef {

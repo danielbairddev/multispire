@@ -1573,4 +1573,40 @@ const fillD = (n: number) => Array.from({ length: n }, () => ({ id: "strike_d" }
   );
 }
 
+// --- Danse Macabre: Block when you play a 2+ cost card ---
+{
+  const g = new GameEngine("danse", seededRng(15));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "danse_macabre" }, { id: "deathbringer" }, { id: "strike_n" }, { id: "defend_n" }, { id: "bodyguard" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  play(g, "a", "danse_macabre");
+  const b0 = blockOf(g, "a") ?? 0;
+  play(g, "a", "deathbringer"); // cost 2 -> +4 Block
+  assert((blockOf(g, "a") ?? 0) - b0 === 4, "Danse Macabre gives 4 Block on a 2-cost card");
+}
+
+// --- Sleight of Flesh: deal damage whenever you apply a debuff ---
+{
+  const g = new GameEngine("sleight", seededRng(16));
+  g.addPlayer({
+    id: "a",
+    name: "A",
+    deck: [{ id: "sleight_of_flesh" }, { id: "scourge" }, { id: "strike_n" }, { id: "defend_n" }, { id: "bodyguard" }],
+    maxHp: 200,
+  });
+  g.addPlayer({ id: "b", name: "B", deck: ironcladStarterDeck(), maxHp: 200 });
+  g.start();
+  ensure(g, "a");
+  play(g, "a", "sleight_of_flesh");
+  const before = hpOf(g, "b");
+  play(g, "a", "scourge", "b"); // applies Doom (a debuff) -> 9 immediate damage
+  assert(before - hpOf(g, "b") === 9, "Sleight of Flesh deals 9 when a debuff is applied, got " + (before - hpOf(g, "b")));
+}
+
 console.log(`\n✅ engine tests passed (${passed} assertions)\n`);

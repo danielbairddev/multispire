@@ -485,6 +485,10 @@ export class GameEngine {
       let extraDraw = 0;
       // Berserk: extra Energy at the start of each turn.
       energy += p.powers.get("berserk") ?? 0;
+      // Friendship / Demesne: extra Energy each turn (Demesne also draws below).
+      energy += p.powers.get("friendship") ?? 0;
+      energy += p.powers.get("demesne") ?? 0;
+      extraDraw += p.powers.get("demesne") ?? 0;
       for (const rid of p.relics) {
         const r = getRelic(rid);
         energy += r?.bonusEnergyPerTurn ?? 0;
@@ -630,6 +634,9 @@ export class GameEngine {
     // After Image: gain Block whenever you play a card.
     const afterImage = p.powers.get("after_image") ?? 0;
     if (afterImage > 0) this.gainBlock(p, afterImage, "After Image");
+    // Danse Macabre: gain Block whenever you play a card costing 2 or more.
+    const danse = p.powers.get("danse_macabre") ?? 0;
+    if (danse > 0 && typeof cost === "number" && cost >= 2) this.gainBlock(p, danse, "Danse Macabre");
     // Spirit of Ash: gain Block whenever you play an Ethereal card.
     if (def.ethereal) {
       const ash = p.powers.get("spirit_of_ash") ?? 0;
@@ -1335,8 +1342,13 @@ export class GameEngine {
         const soulBonus = eff.perSoulInExhaust
           ? eff.perSoulInExhaust * source.exhaust.filter((c) => c.id === "soul").length
           : 0;
-        const base =
+        let base =
           eff.amount + strikeBonus + rampageBonus + starCardBonus + skillBonus + starGainBonus + createdBonus + vigor + accuracyBonus + drawBonus + soulBonus;
+        // Lethality: your first Attack each turn deals a % more damage.
+        const lethality = source.powers.get("lethality") ?? 0;
+        if (lethality > 0 && def.type === "attack" && source.attacksThisTurn === 0) {
+          base = Math.floor(base * (1 + lethality / 100));
+        }
         // Monarch's Gaze: attacking an enemy saps 1 Strength from it this turn.
         const gaze = source.powers.get("monarchs_gaze") ?? 0;
         for (const tid of targets) {
@@ -1492,6 +1504,14 @@ export class GameEngine {
             this.pushLog(`☠ ${r.name} gains ${eff.amount} ${pdef.name}${rid === source.id ? "" : ` (from ${source.name})`}.`);
           } else {
             this.pushLog(`✦ ${r.name} gains ${eff.amount} ${pdef.name}.`);
+          }
+          // Sleight of Flesh: deal damage to an enemy whenever you apply a debuff.
+          const sleight = source.powers.get("sleight_of_flesh") ?? 0;
+          if (sleight > 0 && pdef.kind === "debuff" && eff.amount > 0 && !isBookkeeping && rid !== source.id) {
+            const dealt = this.computeDamage(sleight, source, r, false);
+            this.dealDamage(r, dealt);
+            this.pushLog(`✦ ${source.name}'s Sleight of Flesh deals ${dealt} to ${r.name}.`);
+            this.checkDeaths();
           }
         }
         // Shroud: gain Block whenever you apply Doom; mark it for Death's Door.
@@ -2582,6 +2602,11 @@ export class GameEngine {
         if (def?.energyLossOnDraw) {
           if (this.inTurnStartDraw) this.turnStartEnergyLoss += def.energyLossOnDraw;
           else p.energy = Math.max(0, p.energy - def.energyLossOnDraw);
+        }
+        // Pagestorm: drawing an Ethereal card draws extra cards.
+        const pagestorm = p.powers.get("pagestorm") ?? 0;
+        if (pagestorm > 0 && (def?.ethereal || p.etherealUids.has(c.uid))) {
+          n += pagestorm; // extends this loop to draw the bonus card(s)
         }
       }
     }
